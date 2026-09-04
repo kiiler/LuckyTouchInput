@@ -95,8 +95,16 @@ See [architecture](docs/ARCHITECTURE.md), [privacy](docs/PRIVACY.md),
 
 ## Project status
 
-`0.1.0-alpha` is the first public-design baseline. Before a signed release, the project still needs
-real-device checks on clean Windows installations and a final application icon.
+`0.1.0-alpha` is the first public-design baseline. The self-contained portable package passed an
+offline first-launch acceptance on a clean Windows 11 Enterprise LTSC 2024 system (build 26100) at
+1280×752: 55 buttons were exposed, an actual key event was delivered without stealing focus, Enter
+kept the panel open, the 3 px seam and taskbar remained visible, the target window was restored,
+and no native-keyboard, startup, or installer state was left behind.
+
+![Clean Windows 11 acceptance at 1280×752](assets/lucky-touch-input-clean-win11.png)
+
+Before a signed release, the project still needs validation on real touch hardware and a final
+application icon.
 
 ## License
 

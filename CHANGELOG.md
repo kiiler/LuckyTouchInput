@@ -29,3 +29,8 @@ All notable changes to Lucky Touch Input are documented here.
 - Interactive 3840×2064 / 200% DPI check exposed 55 buttons, delivered a key event through
   an active Chinese IME, preserved a 3 px seam, restored the target rectangle, and left the
   Windows touch-keyboard registry values unchanged.
+- The self-contained portable package passed an offline first-launch acceptance on a clean
+  Windows 11 Enterprise LTSC 2024 system (build 26100) at 1280×752 with no .NET command present:
+  55 buttons were exposed, an actual `a` key event retained target focus, Enter kept the panel
+  open, the taskbar stayed uncovered, the 3 px seam and target restoration passed, and no native
+  keyboard, startup, recovery-lease, or uninstall state was left behind.

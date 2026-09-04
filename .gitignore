@@ -1,0 +1,11 @@
+bin/
+obj/
+artifacts/
+.vs/
+.vscode/
+*.user
+*.suo
+*.pdb
+*.log
+settings.ini
+native-keyboard-lease.ini

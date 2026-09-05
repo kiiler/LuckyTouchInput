@@ -367,12 +367,14 @@ try {
     Click-KeyboardButton '数字'
 
     # Wheel events must reach the focused editor even while the pointer is over the keyboard.
+    Click-KeyboardButton '工具'
     Click-KeyboardButton '滚↓'
     $probeTitle = [System.Windows.Automation.AutomationElement]::FromHandle($probeHwnd).Current.Name
     Assert-Check 'wheel_reaches_editor' ($probeTitle -like '*Wheel=-360*')
     Click-KeyboardButton '候选›'
     $probeTitle = [System.Windows.Automation.AutomationElement]::FromHandle($probeHwnd).Current.Name
     Assert-Check 'candidate_page_key' ($probeTitle -like '*KeyDown=Next*')
+    Click-KeyboardButton '数字'
 
     [LuckyTouchInputAcceptanceNative]::ShowWindow($probeHwnd, 6) | Out-Null
     Start-Sleep -Milliseconds 600

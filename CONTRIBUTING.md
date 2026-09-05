@@ -9,6 +9,11 @@ Keep changes small, Windows-focused, and testable on real touch or remote-contro
    `pwsh -File tests/Invoke-UiAcceptance.ps1`. Never use your daily work account for the full suite.
 5. For UI changes, report the monitor resolution, working area, DPI, mode, and measured window rectangles.
 
+The fast tests also instantiate WinForms controls with runtime hooks, tray creation, and target-window
+management disabled. They check the actual mobile key rectangles and leave the current settings and
+native-keyboard lease unchanged. Add `-- --render-directory artifacts/layout-checks` to render these
+test controls. These images are control-layout renders, not screenshots of a live remote session.
+
 `tests/LuckyTouchInput.InputProbe` is a disposable local integration target. It stores no text and
 closes without a save prompt, so UI Automation can verify input and window restoration safely.
 

@@ -21,6 +21,7 @@ namespace Lucky.TouchInput
         internal int LeftGap;
         internal bool CollapseAfterEnter;
         internal bool SuppressNativeKeyboard;
+        internal bool LargeKeys;
 
         internal static UserPreferences Load()
         {
@@ -93,6 +94,8 @@ namespace Lucky.TouchInput
                     preferences.CollapseAfterEnter = flag;
                 else if (key == "SuppressNativeKeyboard" && Boolean.TryParse(value, out flag))
                     preferences.SuppressNativeKeyboard = flag;
+                else if (key == "LargeKeys" && Boolean.TryParse(value, out flag))
+                    preferences.LargeKeys = flag;
             }
             if (preferences.Mode == KeyboardMode.PinnedApplication &&
                 String.IsNullOrWhiteSpace(preferences.PinnedProcessName))
@@ -129,7 +132,8 @@ namespace Lucky.TouchInput
                     "FloatingHeight=" + FloatingHeight.ToString(CultureInfo.InvariantCulture),
                     "LeftGap=" + LeftGap.ToString(CultureInfo.InvariantCulture),
                     "CollapseAfterEnter=" + CollapseAfterEnter,
-                    "SuppressNativeKeyboard=" + SuppressNativeKeyboard
+                    "SuppressNativeKeyboard=" + SuppressNativeKeyboard,
+                    "LargeKeys=" + LargeKeys
                 });
                 File.Move(temporary, path, true);
             }
@@ -143,7 +147,7 @@ namespace Lucky.TouchInput
 
         internal void ResetCurrentLayout()
         {
-            HeightPercent = Mode == KeyboardMode.Floating ? 34 : 42;
+            HeightPercent = LargeKeys ? 48 : Mode == KeyboardMode.Floating ? 34 : 42;
             LeftGap = 0;
             Save();
         }

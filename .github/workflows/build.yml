@@ -29,5 +29,5 @@ jobs:
         with:
           name: LuckyTouchInput-win-x64
           path: |
-            artifacts/LuckyTouchInput-0.1.0-alpha-win-x64.zip
-            artifacts/LuckyTouchInput-0.1.0-alpha-win-x64.zip.sha256
+            artifacts/LuckyTouchInput-*-win-x64.zip
+            artifacts/LuckyTouchInput-*-win-x64.zip.sha256

@@ -21,7 +21,7 @@ namespace Lucky.TouchInput
         private Control triggerPanel;
         private Label title;
         private RoundedButton modeButton;
-        private RoundedButton schemeButton;
+        private RoundedButton toolsButton;
         private RoundedButton variablesButton;
         private RoundedButton promptsButton;
         private RoundedButton settingsButton;
@@ -56,11 +56,15 @@ namespace Lucky.TouchInput
             }
         }
 
-        internal KeyboardForm()
+        internal KeyboardForm() : this(UserPreferences.Load(), true) { }
+
+        // The non-running form also permits real control-layout checks without input hooks,
+        // user settings writes, tray icons, or changing another application's window.
+        internal KeyboardForm(UserPreferences settings, bool startRuntime)
         {
-            preferences = UserPreferences.Load();
-            nativeKeyboardGuard = new NativeKeyboardGuard();
-            if (!nativeKeyboardGuard.Apply(preferences.SuppressNativeKeyboard))
+            preferences = settings;
+            nativeKeyboardGuard = startRuntime ? new NativeKeyboardGuard() : null;
+            if (nativeKeyboardGuard != null && !nativeKeyboardGuard.Apply(preferences.SuppressNativeKeyboard))
                 preferences.SuppressNativeKeyboard = false;
             Text = "Lucky Touch Input";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -70,16 +74,16 @@ namespace Lucky.TouchInput
             BackColor = Color.FromArgb(238, 239, 242);
             AutoScaleMode = AutoScaleMode.None;
             BuildLayout();
-            BuildTrayIcon();
+            if (startRuntime) BuildTrayIcon();
 
             monitor = new Timer();
             monitor.Interval = 125;
             monitor.Tick += delegate { RefreshState(); };
-            Shown += delegate { RefreshState(); monitor.Start(); };
+            if (startRuntime) Shown += delegate { RefreshState(); monitor.Start(); };
             FormClosing += delegate {
                 monitor.Stop();
                 RestoreTargetWindow();
-                nativeKeyboardGuard.Dispose();
+                if (nativeKeyboardGuard != null) nativeKeyboardGuard.Dispose();
                 if (trayIcon != null) trayIcon.Dispose();
             };
         }
@@ -97,6 +101,17 @@ namespace Lucky.TouchInput
                 return;
             }
             base.WndProc(ref message);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (monitor != null) monitor.Dispose();
+                if (nativeKeyboardGuard != null) nativeKeyboardGuard.Dispose();
+                if (trayIcon != null) trayIcon.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         private void BuildLayout()
@@ -144,12 +159,14 @@ namespace Lucky.TouchInput
             title.ForeColor = Color.FromArgb(75, 75, 75);
             toolbar.Controls.Add(title, 0, 0);
             modeButton = ActionButton(String.Empty, delegate { CycleMode(); });
-            schemeButton = ActionButton(String.Empty, delegate { ToggleDoublePinyin(); });
+            toolsButton = ActionButton("工具", delegate {
+                TogglePanel(panel != PanelKind.Keys && panel != PanelKind.Settings ? panel : PanelKind.Tools);
+            });
             variablesButton = ActionButton("变量", delegate { TogglePanel(PanelKind.Variables); });
             promptsButton = ActionButton("提示", delegate { TogglePanel(PanelKind.Prompts); });
             settingsButton = ActionButton("设置", delegate { TogglePanel(PanelKind.Settings); });
             toolbar.Controls.Add(modeButton, 1, 0);
-            toolbar.Controls.Add(schemeButton, 2, 0);
+            toolbar.Controls.Add(toolsButton, 2, 0);
             toolbar.Controls.Add(variablesButton, 3, 0);
             toolbar.Controls.Add(promptsButton, 4, 0);
             toolbar.Controls.Add(settingsButton, 5, 0);
@@ -179,26 +196,21 @@ namespace Lucky.TouchInput
             var actions = new TableLayoutPanel();
             actions.Dock = DockStyle.Fill;
             actions.RowCount = 1;
-            actions.ColumnCount = 9;
-            float[] actionWeights = { 1.0f, 0.6f, 0.95f, 3.6f, 0.95f, 0.6f, 1.25f, 0.9f, 0.9f };
+            actions.ColumnCount = 5;
+            actions.Margin = new Padding(0);
+            float[] actionWeights = { 1.25f, 1f, 5f, 1f, 1.75f };
             foreach (float weight in actionWeights)
                 actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, weight * 10f));
             actions.Controls.Add(ActionButton("中 / 英", delegate { SendKey(0x10); }), 0, 0);
             actions.Controls.Add(K(",", 0xBC), 1, 0);
-            var candidatePrevious = K("候选‹", 0x21);
-            actions.Controls.Add(candidatePrevious, 2, 0);
-            actions.Controls.Add(K("空格", 0x20), 3, 0);
-            var candidateNext = K("候选›", 0x22);
-            actions.Controls.Add(candidateNext, 4, 0);
-            actions.Controls.Add(K("。", 0xBE), 5, 0);
+            actions.Controls.Add(K("空格", 0x20), 2, 0);
+            actions.Controls.Add(K("。", 0xBE), 3, 0);
             var enter = K("回车", 0x0D);
             enter.NormalColor = Color.FromArgb(0, 103, 192);
             enter.PressedColor = Color.FromArgb(0, 83, 160);
             enter.BackColor = enter.NormalColor;
             enter.ForeColor = Color.White;
-            actions.Controls.Add(enter, 6, 0);
-            actions.Controls.Add(ActionButton("滚↑", delegate { ScrollTarget(3); }), 7, 0);
-            actions.Controls.Add(ActionButton("滚↓", delegate { ScrollTarget(-3); }), 8, 0);
+            actions.Controls.Add(enter, 4, 0);
             root.Controls.Add(actions, 0, 5);
             UpdateToolbar();
         }
@@ -252,7 +264,9 @@ namespace Lucky.TouchInput
                     PanelButton("触键设置", delegate { OpenTouchKeyboardSettings(); }),
                     PanelButton("Rime 菜单", delegate { SendChord(0x11, 0xC0); }),
                     PanelButton("立即收起", delegate { CollapseKeyboard(); }),
-                    PanelButton("重置布局", delegate { ResetLayout(); })
+                    PanelButton("重置布局", delegate { ResetLayout(); }),
+                    PanelButton("左缝 −", delegate { AdjustGap(-12); }),
+                    PanelButton("左缝 +", delegate { AdjustGap(12); })
                 });
             return KeyRow(new[] {
                 PanelButton(ModeLabel(), delegate { CycleMode(); }),
@@ -261,8 +275,7 @@ namespace Lucky.TouchInput
                 PanelButton(StartupSettings.Label, delegate { ToggleStartup(); }),
                 PanelButton("高度 −", delegate { AdjustHeight(-4); }),
                 PanelButton("高度 +", delegate { AdjustHeight(4); }),
-                PanelButton("左缝 −", delegate { AdjustGap(-12); }),
-                PanelButton("左缝 +", delegate { AdjustGap(12); }),
+                PanelButton(preferences.LargeKeys ? "布局：手机大键" : "布局：标准", delegate { ToggleLargeKeys(); }),
                 PanelButton("全 / 双", delegate { ToggleDoublePinyin(); }),
                 PanelButton("更多", delegate { ShowSettingsPage(true); })
             });
@@ -281,6 +294,18 @@ namespace Lucky.TouchInput
                 PanelButton("日期", delegate { InsertText(DateTime.Now.ToString("yyyy-MM-dd")); }),
                 PanelButton("时间", delegate { InsertText(DateTime.Now.ToString("HH:mm")); }),
                 PanelButton("清空", delegate { ClearVariables(); })
+            });
+        }
+
+        private Control BuildToolsRow()
+        {
+            return KeyRow(new[] {
+                K("候选‹", 0x21), K("候选›", 0x22),
+                PanelButton("滚↑", delegate { ScrollTarget(3); }),
+                PanelButton("滚↓", delegate { ScrollTarget(-3); }),
+                K("←", 0x25), K("→", 0x27),
+                PanelButton("变量", delegate { TogglePanel(PanelKind.Variables); }),
+                PanelButton("提示", delegate { TogglePanel(PanelKind.Prompts); })
             });
         }
 
@@ -314,6 +339,8 @@ namespace Lucky.TouchInput
             var button = new RoundedButton();
             button.Text = label;
             button.Tag = virtualKey;
+            button.LargeLabels = preferences.LargeKeys;
+            if (preferences.LargeKeys) button.Margin = new Padding(4);
             button.AccessibleDescription = weight.ToString(CultureInfo.InvariantCulture);
             button.Dock = DockStyle.Fill;
             button.Click += SendKeyClick;
@@ -347,6 +374,8 @@ namespace Lucky.TouchInput
             button.Text = label;
             button.Dock = DockStyle.Fill;
             button.Margin = new Padding(5, 8, 5, 8);
+            button.LargeLabels = preferences.LargeKeys;
+            if (preferences.LargeKeys) button.Margin = new Padding(4);
             button.Click += click;
             return button;
         }
@@ -356,6 +385,8 @@ namespace Lucky.TouchInput
             var button = new RoundedButton();
             button.Text = label;
             button.Tag = null;
+            button.LargeLabels = preferences.LargeKeys;
+            if (preferences.LargeKeys) button.Margin = new Padding(4);
             button.AccessibleDescription = "1";
             button.Dock = DockStyle.Fill;
             button.Click += click;
@@ -545,9 +576,16 @@ namespace Lucky.TouchInput
                 return;
             }
             Rectangle desired = LayoutPolicy.KeyboardBounds(work, preferences.Mode,
-                preferences.HeightPercent, preferences.LeftGap);
+                preferences.HeightPercent, preferences.LeftGap, preferences.LargeKeys);
+            ApplyKeyboardBounds(desired);
+        }
+
+        internal void ApplyKeyboardBounds(Rectangle desired)
+        {
             int height = desired.Height;
-            int toolbarHeight = Math.Min(104, Math.Max(70, height / 9));
+            int toolbarHeight = preferences.LargeKeys
+                ? Math.Clamp(height / 10, 56, 104)
+                : Math.Min(104, Math.Max(70, height / 9));
             if (root != null && root.RowStyles.Count > 0 &&
                 Math.Abs(root.RowStyles[0].Height - toolbarHeight) > 0.5f)
                 root.RowStyles[0].Height = toolbarHeight;
@@ -558,8 +596,14 @@ namespace Lucky.TouchInput
         private void AdaptToolbar(int width)
         {
             // The original fixed 922 px of buttons left no room for status on smaller hosts.
-            int unit = Math.Clamp((width - 160) / 12, 40, 82);
-            int[] widths = { 0, unit * 2, unit * 2, unit, unit, unit, unit, unit };
+            int unit = preferences.LargeKeys
+                ? Math.Clamp((width - 32) / 9, 40, 220)
+                : Math.Clamp((width - 160) / 12, 40, 82);
+            int[] widths = preferences.LargeKeys
+                ? new[] { 0, unit * 2, unit, 0, 0, unit, unit, unit }
+                : new[] { 0, unit * 2, unit * 2, unit, unit, unit, unit, unit };
+            variablesButton.Visible = !preferences.LargeKeys;
+            promptsButton.Visible = !preferences.LargeKeys;
             for (int index = 1; index < widths.Length; index++)
                 if (Math.Abs(toolbar.ColumnStyles[index].Width - widths[index]) > 0.5f)
                     toolbar.ColumnStyles[index].Width = widths[index];
@@ -615,7 +659,7 @@ namespace Lucky.TouchInput
             placementSaved = false;
         }
 
-        private void TogglePanel(PanelKind requested)
+        internal void TogglePanel(PanelKind requested)
         {
             if (requested == PanelKind.Settings && panel != PanelKind.Settings)
                 advancedSettings = false;
@@ -634,6 +678,7 @@ namespace Lucky.TouchInput
             if (panel == PanelKind.Settings) auxiliaryRow = BuildSettingsRow();
             else if (panel == PanelKind.Variables) auxiliaryRow = BuildVariablesRow();
             else if (panel == PanelKind.Prompts) auxiliaryRow = BuildPromptsRow();
+            else if (panel == PanelKind.Tools) auxiliaryRow = BuildToolsRow();
             else auxiliaryRow = BuildNumberRow();
             root.Controls.Add(auxiliaryRow, 0, 1);
         }
@@ -693,6 +738,33 @@ namespace Lucky.TouchInput
             SetStatus(preferences.CollapseAfterEnter
                 ? "回车后收起为右下角触发按钮" : "回车后保持键盘常驻");
             ReplaceAuxiliaryRow();
+        }
+
+        private void ToggleLargeKeys()
+        {
+            preferences.LargeKeys = !preferences.LargeKeys;
+            preferences.HeightPercent = preferences.LargeKeys ? 48 : 42;
+            preferences.Save();
+            ApplyTouchSizing(root);
+            ReplaceAuxiliaryRow();
+            RefreshState();
+            SetStatus(preferences.LargeKeys
+                ? "手机大键已启用；可用高度 ± 微调，工具内有滚轮和候选翻页"
+                : "已恢复标准布局");
+        }
+
+        private void ApplyTouchSizing(Control parent)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                var button = child as RoundedButton;
+                if (button != null)
+                {
+                    button.LargeLabels = preferences.LargeKeys;
+                    button.Margin = new Padding(preferences.LargeKeys ? 4 : 6);
+                }
+                if (child.HasChildren) ApplyTouchSizing(child);
+            }
         }
 
         private void ToggleNativePolicy()
@@ -898,13 +970,14 @@ namespace Lucky.TouchInput
             title.Text = DateTime.Now < statusUntil && !String.IsNullOrEmpty(statusMessage)
                 ? statusMessage : defaultTitle;
             modeButton.Text = ModeLabel();
-            schemeButton.Text = MicrosoftPinyinSettings.Label;
+            toolsButton.Text = panel != PanelKind.Keys && panel != PanelKind.Settings ? "数字" : "工具";
             variablesButton.Text = panel == PanelKind.Variables ? "数字" : "变量";
             promptsButton.Text = panel == PanelKind.Prompts ? "数字" : "提示";
             settingsButton.Text = panel == PanelKind.Settings ? "数字" : "设置";
             SetButtonActive(variablesButton, panel == PanelKind.Variables);
             SetButtonActive(promptsButton, panel == PanelKind.Prompts);
             SetButtonActive(settingsButton, panel == PanelKind.Settings);
+            SetButtonActive(toolsButton, panel == PanelKind.Tools);
         }
 
         private static void SetButtonActive(RoundedButton button, bool active)

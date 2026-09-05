@@ -8,6 +8,12 @@ Adaptive on-screen keyboard and input panel for Windows tablets and remote sessi
 
 [简体中文](README.zh-CN.md)
 
+In development: `0.1.0-alpha.1` adds an opt-in phone large-key preset under Settings, a wider
+bottom-right Enter key, and a Tools panel for scrolling/candidate paging. The preset starts at 48%
+height and remains adjustable; it does not change Windows DPI or resolution. A host streaming a
+4K desktop cannot infer the phone's physical size from its own display dimensions alone.
+The download and screenshots below still describe the published first alpha, not this candidate.
+
 [Download Windows x64](https://github.com/fofc12/LuckyTouchInput/releases/tag/v0.1.0-alpha) ·
 [Report a problem](https://github.com/fofc12/LuckyTouchInput/issues)
 

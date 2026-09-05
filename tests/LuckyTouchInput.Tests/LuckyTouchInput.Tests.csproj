@@ -1,15 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\src\LuckyTouchInput\KeyboardMode.cs" Link="KeyboardMode.cs" />
-    <Compile Include="..\..\src\LuckyTouchInput\LayoutPolicy.cs" Link="LayoutPolicy.cs" />
-    <Compile Include="..\..\src\LuckyTouchInput\UserPreferences.cs" Link="UserPreferences.cs" />
-    <Compile Include="..\..\src\LuckyTouchInput\Diagnostics.cs" Link="Diagnostics.cs" />
+    <ProjectReference Include="..\..\src\LuckyTouchInput\LuckyTouchInput.csproj" />
   </ItemGroup>
 </Project>

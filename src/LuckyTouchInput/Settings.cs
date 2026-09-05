@@ -11,7 +11,7 @@ using Microsoft.Win32;
 
 namespace Lucky.TouchInput
 {
-    internal enum PanelKind { Keys, Settings, Variables, Prompts }
+    internal enum PanelKind { Keys, Settings, Variables, Prompts, Tools }
 
     internal sealed class NativeKeyboardGuard : IDisposable
     {
@@ -379,6 +379,13 @@ namespace Lucky.TouchInput
     internal sealed class RoundedButton : Button
     {
         private Font fittedFont;
+        private bool largeLabels;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        internal bool LargeLabels
+        {
+            get { return largeLabels; }
+            set { largeLabels = value; FitLabel(); }
+        }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Color NormalColor { get; set; }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -426,8 +433,8 @@ namespace Lucky.TouchInput
         {
             if (Width < 8 || Height < 8) return;
             bool key = Tag is ushort;
-            float maximum = (key ? 48f : 16f) * DeviceDpi / 96f;
-            float heightLimit = Math.Max(8f, (Height - 4) * (key ? 0.60f : 0.42f));
+            float maximum = (key ? 48f : largeLabels ? 32f : 16f) * DeviceDpi / 96f;
+            float heightLimit = Math.Max(8f, (Height - 4) * (key ? 0.60f : largeLabels ? 0.58f : 0.42f));
             float widthLimit = Math.Max(8f, (Width - 8f) / Math.Max(1, Text.Length));
             float pixels = Math.Min(maximum, Math.Min(heightLimit, widthLimit));
             if (fittedFont != null && Math.Abs(fittedFont.Size - pixels) < 0.5f) return;

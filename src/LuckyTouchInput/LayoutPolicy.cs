@@ -13,10 +13,10 @@ namespace Lucky.TouchInput
         }
 
         internal static int EffectiveHeightPercent(
-            KeyboardMode mode, int configured, int width, int height)
+            KeyboardMode mode, int configured, int width, int height, bool largeKeys = false)
         {
             int clamped = ClampHeightPercent(mode, configured);
-            if (mode == KeyboardMode.Floating || width <= 0 || height <= 0)
+            if (largeKeys || mode == KeyboardMode.Floating || width <= 0 || height <= 0)
                 return clamped;
             double aspect = width / (double)height;
             return aspect < 1.30 ? Math.Min(clamped, 36) : clamped;
@@ -24,12 +24,12 @@ namespace Lucky.TouchInput
 
         internal static Rectangle KeyboardBounds(
             Rectangle workingArea, KeyboardMode mode, int configuredHeightPercent,
-            int requestedLeftGap)
+            int requestedLeftGap, bool largeKeys = false)
         {
             int leftGap = Math.Min(Math.Max(0, requestedLeftGap),
                 Math.Max(0, workingArea.Width / 12));
             int percent = EffectiveHeightPercent(mode, configuredHeightPercent,
-                workingArea.Width, workingArea.Height);
+                workingArea.Width, workingArea.Height, largeKeys);
             int requested = workingArea.Height * percent / 100;
             int topReserve = Math.Min(280, Math.Max(0, workingArea.Height / 3));
             int maximum = Math.Max(1, workingArea.Height - topReserve);

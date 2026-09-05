@@ -1,10 +1,15 @@
 param(
     [string]$DotNet = 'dotnet',
     [ValidatePattern('^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.1.0-alpha'
+    [string]$Version
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+if (-not $Version) {
+    $project = [xml](Get-Content -LiteralPath (Join-Path $root 'src/LuckyTouchInput/LuckyTouchInput.csproj') -Raw)
+    $Version = [string]$project.Project.PropertyGroup.Version
+    if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid project version.' }
+}
 $artifacts = Join-Path $root 'artifacts'
 $stage = Join-Path $artifacts ('.publish-' + [guid]::NewGuid().ToString('N'))
 $publishDirectory = Join-Path $artifacts 'win-x64'

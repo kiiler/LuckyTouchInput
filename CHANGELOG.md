@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased] - 0.1.0-alpha.1
+
+- Add an opt-in phone large-key preset: 48% height, larger utility labels, smaller margins,
+  and a compact toolbar. Height remains adjustable; the preset does not change Windows DPI/resolution.
+- Widen Enter and put it at the far right of a five-button bottom row. Candidate paging, scrolling,
+  and cursor arrows now live in the Tools panel; variables and prompts remain accessible there.
+- Exclude native input surfaces and accessibility OSK from foreground window-avoidance targets.
+- Add real WinForms control-layout tests across 1280, 3840, foldable, and portrait work areas.
+- Package filenames default to the version in the application project.
+
+The published alpha package is unchanged. The candidate build passes 113 settings/control-layout
+checks; the prior 34-check clean-VM acceptance applies only to the published alpha, not this candidate.
+
 ## [0.1.0-alpha] - 2026-09-05
 
 First public prerelease for Windows 11 x64. Chinese UI, MIT license, self-contained portable ZIP.

@@ -13,10 +13,10 @@
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <AssemblyTitle>Lucky Touch Input</AssemblyTitle>
     <Description>Adaptive touch input panel for Windows tablets and remote sessions.</Description>
-    <Version>0.1.0-alpha</Version>
+    <Version>0.1.0-alpha.1</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <FileVersion>0.1.0.1</FileVersion>
     <Authors>Lucky Touch Input contributors</Authors>
     <NeutralLanguage>zh-CN</NeutralLanguage>
   </PropertyGroup>

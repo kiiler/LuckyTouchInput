@@ -295,7 +295,8 @@ namespace Lucky.TouchInput
                 return true;
             string[] excluded = {
                 "LuckyTouchInput", "ShellExperienceHost", "StartMenuExperienceHost",
-                "SearchHost", "LockApp", "LogonUI", "consent"
+                "SearchHost", "LockApp", "LogonUI", "consent", "osk", "AtBroker",
+                "TabTip", "TextInputHost", "WindowsInputExperience"
             };
             foreach (string name in excluded)
                 if (String.Equals(process, name, StringComparison.OrdinalIgnoreCase))

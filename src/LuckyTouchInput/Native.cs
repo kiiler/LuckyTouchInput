@@ -20,6 +20,15 @@ namespace Lucky.TouchInput
     internal struct POINT { public int X, Y; }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct GUITHREADINFO
+    {
+        public int size;
+        public uint flags;
+        public IntPtr active, focus, capture, menuOwner, moveSize, caret;
+        public RECT caretRect;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct WINDOWPLACEMENT
     {
         public int length, flags, showCmd;
@@ -72,13 +81,6 @@ namespace Lucky.TouchInput
         [PreserveSig] int Location(out RECT rect);
     }
 
-    [ComImport, Guid("4CE576FA-83DC-4F88-951C-9D0782B4E376")]
-    internal class UIHostNoLaunch { }
-
-    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown),
-     Guid("37C994E7-432B-4834-A2F7-DCE1F13B834B")]
-    internal interface ITipInvocation { void Toggle(IntPtr hwnd); }
-
     internal static class Native
     {
         internal const uint KEYEVENTF_KEYUP = 0x0002;
@@ -90,6 +92,7 @@ namespace Lucky.TouchInput
         internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
         internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
         internal const uint WM_QUIT = 0x0012;
+        internal const int WM_SHOW_KEYBOARD = 0x8000 + 42;
         private const uint WM_SETTINGCHANGE = 0x001A;
         private const uint SMTO_ABORTIFHUNG = 0x0002;
         private const uint OBJID_CARET = 0xFFFFFFF8;
@@ -124,11 +127,35 @@ namespace Lucky.TouchInput
         [DllImport("user32.dll")]
         internal static extern bool IsWindow(IntPtr hwnd);
         [DllImport("user32.dll")]
+        internal static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr FindWindow(string className, string title);
+        [DllImport("user32.dll")]
         internal static extern bool SetForegroundWindow(IntPtr hwnd);
         [DllImport("user32.dll")]
         internal static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
         [DllImport("user32.dll")]
+        private static extern bool GetGUIThreadInfo(uint threadId, ref GUITHREADINFO info);
+        [DllImport("user32.dll")]
+        private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+        internal static void ShowExistingKeyboard()
+        {
+            IntPtr hwnd = FindWindow(null, "Lucky Touch Input");
+            if (hwnd != IntPtr.Zero)
+                PostMessage(hwnd, WM_SHOW_KEYBOARD, IntPtr.Zero, IntPtr.Zero);
+        }
+        [DllImport("user32.dll")]
         internal static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmGetWindowAttribute(IntPtr hwnd, uint attribute,
+            out RECT rect, int size);
+
+        internal static bool GetVisibleWindowRect(IntPtr hwnd, out RECT rect)
+        {
+            return DwmGetWindowAttribute(hwnd, 9, out rect, Marshal.SizeOf<RECT>()) == 0 ||
+                GetWindowRect(hwnd, out rect);
+        }
         [DllImport("user32.dll")]
         internal static extern bool GetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);
         [DllImport("user32.dll")]
@@ -231,14 +258,18 @@ namespace Lucky.TouchInput
         {
             RECT rect;
             return hwnd != IntPtr.Zero && IsWindowVisible(hwnd) &&
-                GetWindowRect(hwnd, out rect) && rect.Width >= 600 && rect.Height >= 400;
+                GetWindowRect(hwnd, out rect) && rect.Width > 0 && rect.Height > 0;
         }
 
         internal static string ProcessName(IntPtr hwnd)
         {
             uint processId;
             GetWindowThreadProcessId(hwnd, out processId);
-            try { return Process.GetProcessById((int)processId).ProcessName; }
+            try
+            {
+                using (Process process = Process.GetProcessById((int)processId))
+                    return process.ProcessName;
+            }
             // The process can exit between querying the window and opening the process object.
             catch (Exception) { return String.Empty; }
         }
@@ -274,101 +305,130 @@ namespace Lucky.TouchInput
 
         internal static RECT InputPaneRect()
         {
+            object pane = null;
             try
             {
                 RECT rect;
-                ((IFrameworkInputPane)new FrameworkInputPane()).Location(out rect);
+                pane = new FrameworkInputPane();
+                ((IFrameworkInputPane)pane).Location(out rect);
                 return rect;
             }
             // The input pane is not available on every Windows desktop surface.
             catch (Exception) { return new RECT(); }
+            finally
+            {
+                if (pane != null && Marshal.IsComObject(pane)) Marshal.ReleaseComObject(pane);
+            }
         }
 
         internal static void HideSystemTouchKeyboard(IntPtr hwnd)
         {
-            RECT rect = InputPaneRect();
-            if (rect.Width <= 0 || rect.Height <= 0) return;
-            try { ((ITipInvocation)new UIHostNoLaunch()).Toggle(hwnd); }
-            // Suppression is optional; a missing private touch-keyboard surface is non-fatal.
-            catch (Exception) { }
+            RECT pane = InputPaneRect();
+            if (pane.Width <= 0 || pane.Height <= 0) return;
+            // Never toggle: a pane closing between Location and Toggle would reopen it.
+            // Candidate-only windows are too small to contain the reported input pane.
+            EnumWindows(delegate(IntPtr window, IntPtr parameter) {
+                if (!IsWindowVisible(window)) return true;
+                string process = ProcessName(window);
+                if (!String.Equals(process, "TextInputHost", StringComparison.OrdinalIgnoreCase) &&
+                    !String.Equals(process, "TabTip", StringComparison.OrdinalIgnoreCase) &&
+                    !String.Equals(process, "WindowsInputExperience", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                RECT rect;
+                if (!GetWindowRect(window, out rect)) return true;
+                int width = Math.Max(0, Math.Min(rect.Right, pane.Right) - Math.Max(rect.Left, pane.Left));
+                int height = Math.Max(0, Math.Min(rect.Bottom, pane.Bottom) - Math.Max(rect.Top, pane.Top));
+                if ((long)width * height >= (long)pane.Width * pane.Height * 9 / 10)
+                    ShowWindow(window, 0);
+                return true;
+            }, IntPtr.Zero);
         }
 
-        internal static void Key(ushort virtualKey, bool shifted)
+        internal static bool Key(ushort virtualKey, bool shifted)
         {
             var inputs = new List<INPUT>();
             if (shifted) inputs.Add(KeyInput(0x10, false));
             inputs.Add(KeyInput(virtualKey, false));
             inputs.Add(KeyInput(virtualKey, true));
             if (shifted) inputs.Add(KeyInput(0x10, true));
-            Submit(inputs);
+            return Submit(inputs);
         }
 
-        internal static void Chord(ushort modifier, ushort virtualKey)
+        internal static bool Chord(ushort modifier, ushort virtualKey)
         {
             var inputs = new List<INPUT> {
                 KeyInput(modifier, false), KeyInput(virtualKey, false),
                 KeyInput(virtualKey, true), KeyInput(modifier, true)
             };
-            Submit(inputs);
+            return Submit(inputs);
         }
 
-        internal static void Wheel(int detents)
+        internal static bool Wheel(IntPtr target, int detents)
         {
-            var input = new INPUT();
-            input.type = 0;
-            input.data.mouse.mouseData = unchecked((uint)(detents * 120));
-            input.data.mouse.flags = MOUSEEVENTF_WHEEL;
-            Submit(new List<INPUT> { input });
+            uint processId;
+            uint threadId = GetWindowThreadProcessId(target, out processId);
+            var info = new GUITHREADINFO { size = Marshal.SizeOf<GUITHREADINFO>() };
+            IntPtr recipient = target;
+            if (GetGUIThreadInfo(threadId, ref info) && info.focus != IntPtr.Zero &&
+                GetAncestor(info.focus, 2) == target)
+                recipient = info.focus;
+            RECT rect;
+            if (!GetWindowRect(recipient, out rect)) return false;
+            int x = rect.Left + rect.Width / 2;
+            int y = rect.Top + rect.Height / 2;
+            // Address the focused control; the pointer is still over our wheel button.
+            // WM_MOUSEWHEEL naturally propagates to its parent if not handled there.
+            return PostMessage(recipient, 0x020A, new IntPtr(detents * 120 << 16),
+                new IntPtr(unchecked((int)((uint)(ushort)x | (uint)(ushort)y << 16))));
         }
 
-        internal static void Text(string text)
+        internal static bool Text(string text)
         {
-            if (String.IsNullOrEmpty(text)) return;
+            if (String.IsNullOrEmpty(text)) return true;
             var inputs = new List<INPUT>();
-            foreach (char character in text)
+            // Insert literal text. Synthesizing Enter/Tab here could submit a chat or
+            // move focus to another field while inserting a multiline clipboard snippet.
+            foreach (char character in text.Replace("\r\n", "\n").Replace('\r', '\n'))
             {
-                if (character == '\r') continue;
-                if (character == '\n' || character == '\t')
-                {
-                    Submit(inputs);
-                    inputs.Clear();
-                    Key(character == '\n' ? (ushort)0x0D : (ushort)0x09, false);
-                    continue;
-                }
                 inputs.Add(UnicodeInput(character, false));
                 inputs.Add(UnicodeInput(character, true));
                 if (inputs.Count >= 240)
                 {
-                    Submit(inputs);
+                    if (!Submit(inputs)) return false;
                     inputs.Clear();
                 }
             }
-            Submit(inputs);
+            return Submit(inputs);
         }
 
         internal static void BroadcastPinyinSettings()
         {
-            UIntPtr result;
-            SendMessageTimeout(new IntPtr(0xFFFF), WM_SETTINGCHANGE, UIntPtr.Zero,
-                "Software\\Microsoft\\InputMethod\\Settings\\CHS",
-                SMTO_ABORTIFHUNG, 1000, out result);
+            BroadcastSettings("Software\\Microsoft\\InputMethod\\Settings\\CHS");
         }
 
         internal static void BroadcastTabletTipSettings()
         {
-            UIntPtr result;
-            SendMessageTimeout(new IntPtr(0xFFFF), WM_SETTINGCHANGE, UIntPtr.Zero,
-                "Software\\Microsoft\\TabletTip\\1.7",
-                SMTO_ABORTIFHUNG, 1000, out result);
+            BroadcastSettings("Software\\Microsoft\\TabletTip\\1.7");
         }
 
-        private static void Submit(List<INPUT> inputs)
+        private static void BroadcastSettings(string path)
         {
-            if (inputs.Count == 0) return;
+            // An unrelated hung window must not freeze our settings buttons or shutdown.
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate {
+                UIntPtr result;
+                SendMessageTimeout(new IntPtr(0xFFFF), WM_SETTINGCHANGE, UIntPtr.Zero,
+                    path, SMTO_ABORTIFHUNG, 100, out result);
+            });
+        }
+
+        private static bool Submit(List<INPUT> inputs)
+        {
+            if (inputs.Count == 0) return true;
             uint expected = (uint)inputs.Count;
             uint sent = SendInput(expected, inputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
             if (sent != expected)
                 Diagnostics.Report("input.send", new Win32Exception(Marshal.GetLastWin32Error()));
+            return sent == expected;
         }
 
         private static INPUT KeyInput(ushort virtualKey, bool up)
@@ -399,7 +459,11 @@ namespace Lucky.TouchInput
             using (var mutex = new System.Threading.Mutex(true,
                 "Local\\Lucky.TouchInput.SingleInstance", out createdNew))
             {
-                if (!createdNew) return;
+                if (!createdNew)
+                {
+                    Native.ShowExistingKeyboard();
+                    return;
+                }
                 Native.SetProcessDpiAwarenessContext(new IntPtr(-4));
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);

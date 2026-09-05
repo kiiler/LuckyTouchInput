@@ -13,126 +13,13 @@ namespace Lucky.TouchInput
 {
     internal enum PanelKind { Keys, Settings, Variables, Prompts }
 
-    internal sealed class UserPreferences
-    {
-        internal static readonly string ConfigDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Lucky", "TouchInput");
-        internal static readonly string ConfigPath = Path.Combine(ConfigDirectory, "settings.ini");
-        internal static readonly string NativeKeyboardLeasePath = Path.Combine(
-            ConfigDirectory, "native-keyboard-lease.ini");
-
-        internal KeyboardMode Mode = KeyboardMode.FollowForeground;
-        internal string PinnedProcessName = String.Empty;
-        internal int PinnedHeight = 42;
-        internal int FollowHeight = 42;
-        internal int FloatingHeight = 34;
-        internal int LeftGap = 0;
-        internal bool CollapseAfterEnter = false;
-        internal bool SuppressNativeKeyboard = false;
-
-        internal static UserPreferences Load()
-        {
-            var preferences = new UserPreferences();
-            try
-            {
-                if (!File.Exists(ConfigPath)) return preferences;
-                foreach (string rawLine in File.ReadAllLines(ConfigPath))
-                {
-                    string[] parts = rawLine.Split(new[] { '=' }, 2);
-                    if (parts.Length != 2) continue;
-                    string key = parts[0].Trim();
-                    string value = parts[1].Trim();
-                    int number;
-                    bool flag;
-                    KeyboardMode mode;
-                    if (key == "Mode" && TryParseMode(value, out mode))
-                        preferences.Mode = mode;
-                    else if (key == "PinnedProcessName")
-                        preferences.PinnedProcessName = value;
-                    else if (key == "PinnedHeight" && Int32.TryParse(value, out number))
-                        preferences.PinnedHeight = LayoutPolicy.ClampHeightPercent(
-                            KeyboardMode.PinnedApplication, number);
-                    else if (key == "FollowHeight" && Int32.TryParse(value, out number))
-                        preferences.FollowHeight = LayoutPolicy.ClampHeightPercent(
-                            KeyboardMode.FollowForeground, number);
-                    else if (key == "FloatingHeight" && Int32.TryParse(value, out number))
-                        preferences.FloatingHeight = LayoutPolicy.ClampHeightPercent(
-                            KeyboardMode.Floating, number);
-                    else if (key == "LeftGap" && Int32.TryParse(value, out number))
-                        preferences.LeftGap = Clamp(number, 0, 96);
-                    else if (key == "CollapseAfterEnter" && Boolean.TryParse(value, out flag))
-                        preferences.CollapseAfterEnter = flag;
-                    else if (key == "SuppressNativeKeyboard" && Boolean.TryParse(value, out flag))
-                        preferences.SuppressNativeKeyboard = flag;
-                }
-            }
-            catch (Exception exception) { Diagnostics.Report("settings.load", exception); }
-            return preferences;
-        }
-
-        internal int HeightPercent
-        {
-            get
-            {
-                if (Mode == KeyboardMode.PinnedApplication) return PinnedHeight;
-                if (Mode == KeyboardMode.Floating) return FloatingHeight;
-                return FollowHeight;
-            }
-            set
-            {
-                int clamped = LayoutPolicy.ClampHeightPercent(Mode, value);
-                if (Mode == KeyboardMode.PinnedApplication) PinnedHeight = clamped;
-                else if (Mode == KeyboardMode.Floating) FloatingHeight = clamped;
-                else FollowHeight = clamped;
-            }
-        }
-
-        internal void Save()
-        {
-            try
-            {
-                Directory.CreateDirectory(ConfigDirectory);
-                File.WriteAllLines(ConfigPath, new[] {
-                    "SchemaVersion=1",
-                    "Mode=" + Mode,
-                    "PinnedProcessName=" + PinnedProcessName,
-                    "PinnedHeight=" + PinnedHeight.ToString(CultureInfo.InvariantCulture),
-                    "FollowHeight=" + FollowHeight.ToString(CultureInfo.InvariantCulture),
-                    "FloatingHeight=" + FloatingHeight.ToString(CultureInfo.InvariantCulture),
-                    "LeftGap=" + LeftGap.ToString(CultureInfo.InvariantCulture),
-                    "CollapseAfterEnter=" + CollapseAfterEnter.ToString(),
-                    "SuppressNativeKeyboard=" + SuppressNativeKeyboard.ToString()
-                });
-            }
-            catch (Exception exception) { Diagnostics.Report("settings.save", exception); }
-        }
-
-        internal void ResetCurrentLayout()
-        {
-            HeightPercent = Mode == KeyboardMode.Floating ? 34 : 42;
-            LeftGap = 0;
-            Save();
-        }
-
-        private static int Clamp(int value, int minimum, int maximum)
-        {
-            return Math.Min(maximum, Math.Max(minimum, value));
-        }
-
-        private static bool TryParseMode(string value, out KeyboardMode mode)
-        {
-            return Enum.TryParse(value, true, out mode);
-        }
-    }
-
     internal sealed class NativeKeyboardGuard : IDisposable
     {
         private const string RegistryPath = @"Software\Microsoft\TabletTip\1.7";
         private const string TapInvoke = "TouchKeyboardTapInvoke";
         private const string DesktopInvoke = "EnableDesktopModeAutoInvoke";
-        private readonly RegistrySnapshot tapSnapshot;
-        private readonly RegistrySnapshot desktopSnapshot;
+        private RegistrySnapshot tapSnapshot;
+        private RegistrySnapshot desktopSnapshot;
         private readonly Native.WinEventDelegate winEventCallback;
         private readonly ManualResetEvent hookReady = new ManualResetEvent(false);
         private readonly Thread hookThread;
@@ -141,16 +28,12 @@ namespace Lucky.TouchInput
         private uint hookThreadId;
         private volatile bool suppressing;
         private bool leaseSaved;
+        private readonly bool recoverySucceeded;
         private bool disposed;
 
         internal NativeKeyboardGuard()
         {
-            RecoverStaleLease();
-            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath))
-            {
-                tapSnapshot = RegistrySnapshot.Capture(key, TapInvoke);
-                desktopSnapshot = RegistrySnapshot.Capture(key, DesktopInvoke);
-            }
+            recoverySucceeded = RecoverStaleLease();
             winEventCallback = HandleWinEvent;
             hookThread = new Thread(RunWinEventLoop);
             hookThread.IsBackground = true;
@@ -160,19 +43,26 @@ namespace Lucky.TouchInput
             hookReady.WaitOne(1000);
         }
 
-        internal void Apply(bool suppress)
+        internal bool Apply(bool suppress)
         {
-            if (disposed) return;
-            suppressing = suppress;
+            if (disposed) return false;
             if (!suppress)
             {
+                suppressing = false;
                 RestoreOriginal();
-                return;
+                return true;
             }
+            if (!recoverySucceeded) return false;
+            if (suppressing) return true;
             try
             {
                 if (!leaseSaved)
                 {
+                    using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RegistryPath))
+                    {
+                        tapSnapshot = RegistrySnapshot.Capture(key, TapInvoke);
+                        desktopSnapshot = RegistrySnapshot.Capture(key, DesktopInvoke);
+                    }
                     Directory.CreateDirectory(UserPreferences.ConfigDirectory);
                     File.WriteAllLines(UserPreferences.NativeKeyboardLeasePath, new[] {
                         "SchemaVersion=1",
@@ -187,12 +77,21 @@ namespace Lucky.TouchInput
                     key.SetValue(DesktopInvoke, 0, RegistryValueKind.DWord);
                 }
                 Native.BroadcastTabletTipSettings();
+                suppressing = true;
+                return true;
             }
-            catch (Exception exception) { Diagnostics.Report("native-keyboard.apply", exception); }
+            catch (Exception exception)
+            {
+                Diagnostics.Report("native-keyboard.apply", exception);
+                RestoreOriginal();
+                return false;
+            }
         }
 
         internal void RestoreOriginal()
         {
+            // Coexistence must not touch settings changed by Windows or another application.
+            if (!leaseSaved) return;
             try
             {
                 using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath))
@@ -256,22 +155,16 @@ namespace Lucky.TouchInput
                     String.Equals(process, "TabTip", StringComparison.OrdinalIgnoreCase) ||
                     String.Equals(process, "WindowsInputExperience", StringComparison.OrdinalIgnoreCase))
                 {
-                    RECT pane = Native.InputPaneRect();
-                    if (pane.Width > 0 && pane.Height > 0)
-                    {
-                        IntPtr root = Native.GetAncestor(hwnd, 2);
-                        if (root == IntPtr.Zero) root = hwnd;
-                        Native.ShowWindow(root, 0);
-                    }
+                    Native.HideSystemTouchKeyboard(hwnd);
                 }
             }
             catch (Exception exception) { Diagnostics.Report("native-keyboard.event", exception); }
         }
 
-        private static void RecoverStaleLease()
+        private static bool RecoverStaleLease()
         {
             string path = UserPreferences.NativeKeyboardLeasePath;
-            if (!File.Exists(path)) return;
+            if (!File.Exists(path)) return true;
             try
             {
                 RegistrySnapshot tap = null;
@@ -293,10 +186,12 @@ namespace Lucky.TouchInput
                 }
                 Native.BroadcastTabletTipSettings();
                 File.Delete(path);
+                return true;
             }
             catch (Exception exception)
             {
                 Diagnostics.Report("native-keyboard.recover", exception);
+                return false;
             }
         }
 
@@ -313,6 +208,7 @@ namespace Lucky.TouchInput
 
             internal static RegistrySnapshot Capture(RegistryKey key, string name)
             {
+                if (key == null) return new RegistrySnapshot(false, 0);
                 bool exists = false;
                 foreach (string candidate in key.GetValueNames())
                     if (String.Equals(candidate, name, StringComparison.OrdinalIgnoreCase))
@@ -435,7 +331,7 @@ namespace Lucky.TouchInput
 
         internal static string Label
         {
-            get { return IsDoublePinyin ? "小鹤双拼" : "全拼"; }
+            get { return IsDoublePinyin ? "双拼" : "全拼"; }
         }
 
         internal static bool Toggle(out string message)
@@ -453,6 +349,12 @@ namespace Lucky.TouchInput
                     if (enable)
                     {
                         object mapping = key.GetValue("UserDefinedDoublePinyinScheme0");
+                        if (mapping != null && !String.IsNullOrWhiteSpace(mapping.ToString()) &&
+                            !String.Equals(mapping.ToString(), FlypyMapping, StringComparison.Ordinal))
+                        {
+                            message = "已有自定义双拼，请在拼音设置中选择方案";
+                            return false;
+                        }
                         if (mapping == null || String.IsNullOrWhiteSpace(mapping.ToString()))
                             key.SetValue("UserDefinedDoublePinyinScheme0", FlypyMapping,
                                 RegistryValueKind.String);
@@ -476,6 +378,7 @@ namespace Lucky.TouchInput
 
     internal sealed class RoundedButton : Button
     {
+        private Font fittedFont;
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Color NormalColor { get; set; }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -492,13 +395,15 @@ namespace Lucky.TouchInput
             TabStop = false;
             UseVisualStyleBackColor = false;
             Margin = new Padding(6);
-            Font = new Font("Segoe UI", 22f, FontStyle.Regular, GraphicsUnit.Point);
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            int radius = Math.Min(18, Math.Max(6, Math.Min(Width, Height) / 5));
+            FitLabel();
+            int edge = Math.Min(Width, Height);
+            if (edge < 2) { Region = null; return; }
+            int radius = Math.Min(edge / 2, Math.Min(18, Math.Max(6, edge / 5)));
             using (var path = new GraphicsPath())
             {
                 int diameter = radius * 2;
@@ -509,6 +414,33 @@ namespace Lucky.TouchInput
                 path.CloseFigure();
                 Region = new Region(path);
             }
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            base.OnTextChanged(e);
+            FitLabel();
+        }
+
+        private void FitLabel()
+        {
+            if (Width < 8 || Height < 8) return;
+            bool key = Tag is ushort;
+            float maximum = (key ? 48f : 16f) * DeviceDpi / 96f;
+            float heightLimit = Math.Max(8f, (Height - 4) * (key ? 0.60f : 0.42f));
+            float widthLimit = Math.Max(8f, (Width - 8f) / Math.Max(1, Text.Length));
+            float pixels = Math.Min(maximum, Math.Min(heightLimit, widthLimit));
+            if (fittedFont != null && Math.Abs(fittedFont.Size - pixels) < 0.5f) return;
+            Font old = fittedFont;
+            fittedFont = new Font("Microsoft YaHei UI", pixels, FontStyle.Regular, GraphicsUnit.Pixel);
+            Font = fittedFont;
+            if (old != null) old.Dispose();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && fittedFont != null) { fittedFont.Dispose(); fittedFont = null; }
         }
 
         protected override void OnMouseDown(MouseEventArgs e)

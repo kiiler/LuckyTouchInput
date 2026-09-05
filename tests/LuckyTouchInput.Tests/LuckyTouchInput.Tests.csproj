@@ -9,5 +9,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\LuckyTouchInput\KeyboardMode.cs" Link="KeyboardMode.cs" />
     <Compile Include="..\..\src\LuckyTouchInput\LayoutPolicy.cs" Link="LayoutPolicy.cs" />
+    <Compile Include="..\..\src\LuckyTouchInput\UserPreferences.cs" Link="UserPreferences.cs" />
+    <Compile Include="..\..\src\LuckyTouchInput\Diagnostics.cs" Link="Diagnostics.cs" />
   </ItemGroup>
 </Project>

@@ -1,36 +1,51 @@
 # Changelog
 
-All notable changes to Lucky Touch Input are documented here.
+## [0.1.0-alpha] - 2026-09-05
 
-## [0.1.0-alpha] - Unreleased
+First public prerelease for Windows 11 x64. Chinese UI, MIT license, self-contained portable ZIP.
 
-### Added
+### Features
 
-- No-activation touch keyboard for Windows.
-- Follow-foreground, pinned-application, and floating modes.
-- Adaptive phone, tablet, foldable, DPI, and multi-monitor geometry.
-- Number row, candidate paging keys, scrolling, session snippets, and prompt shortcuts.
-- Optional Windows touch-keyboard suppression with crash-recovery lease.
-- Per-user startup toggle and system-tray recovery entry.
-- Local diagnostics that never record typed or clipboard content.
-- Bilingual quick-start documentation with a real main-panel screenshot.
-- Portable package includes the English and Chinese README files and the MIT license.
+- No-activation QWERTY touch keyboard with numbers, Shift, Backspace, Enter, candidate paging,
+  and focused-control scrolling.
+- Follow foreground, pinned application, and floating modes, with per-mode height and a small
+  visible seam above the keyboard. Taskbar space is left available.
+- Safe collapse/restore, tray recovery, repeated-EXE-launch recovery, and optional login startup.
+- Session-only snippets, literal multiline insertion, and visible prompt shortcuts.
+- Optional Microsoft Pinyin full/double-pinyin switch that preserves existing custom mappings.
+- Opt-in native touch-keyboard suppression with a recoverable per-user settings lease.
+- One-time import of prototype settings without modifying the original.
+- English/Chinese documentation, original vector/app icon, bug-report form, Windows CI,
+  runtime license notices, and SHA-256 package checks.
 
-### Known limitations
+### Fixes before the public release
 
-- Windows 11 and Chinese UI are the initial tested surface.
-- Elevated windows and the UAC secure desktop are unsupported.
-- Window avoidance currently uses target-window resizing; AppBar reservation remains under evaluation.
+- Pinned mode no longer rejects a target after shrinking it below 400 px.
+- Intentional minimization is respected; target window geometry is restored on normal exit.
+- Window avoidance uses DWM's visible frame, not the invisible resize border.
+- Key labels fit the real button height, including the bottom row on small displays.
+- Settings notifications no longer block the UI while waiting on unrelated windows.
+- Native-keyboard suppression hides a confirmed pane instead of using a toggle that can reopen it.
+- Coexistence does not overwrite per-user settings changed while the keyboard is running.
+- Input stops if the intended target cannot be brought to the foreground.
+- Text snippets no longer synthesize Enter or Tab key presses.
+- Settings writes are atomic; invalid modes fall back safely.
+- Publishing validates the SDK before replacing a package and checks packaged documentation links.
 
-### Validation baseline
+### Validation
 
-- .NET 10 Release build: 0 warnings, 0 errors.
-- Eight layout-policy checks passed.
-- Interactive 3840×2064 / 200% DPI check exposed 55 buttons, delivered a key event through
-  an active Chinese IME, preserved a 3 px seam, restored the target rectangle, and left the
-  Windows touch-keyboard registry values unchanged.
-- The self-contained portable package passed an offline first-launch acceptance on a clean
-  Windows 11 Enterprise LTSC 2024 system (build 26100) at 1280×752 with no .NET command present:
-  55 buttons were exposed, an actual `a` key event retained target focus, Enter kept the panel
-  open, the taskbar stayed uncovered, the 3 px seam and target restoration passed, and no native
-  keyboard, startup, recovery-lease, or uninstall state was left behind.
+- Release build: 0 warnings, 0 errors; 58 settings/layout assertions.
+- Offline Windows 11 Enterprise LTSC 2024, build 26100, 1280×800 display / 1280×752 working area:
+  actual committed text, focus retention, settings/modes, scrolling, candidate key delivery,
+  Enter policies, single-instance recovery, visible 3 px seam, minimization, and crash-lease recovery.
+- See [validation scope](docs/VALIDATION.md) for the measured results and explicit gaps.
+
+### Known limits
+
+- Unsigned alpha; Windows 11 x64 and Chinese UI are the initial release surface.
+- Real touch hardware, all DPI combinations, and every remote client are not certified.
+- Candidate composition belongs to the active IME; delivery of a page key is not an IME compatibility test.
+- Native touch-keyboard suppression remains experimental. The separate accessibility keyboard
+  (osk.exe), elevated windows, and the UAC secure desktop are not controlled.
+- After a forced process kill, native settings recover on the next launch; the previously resized
+  application's geometry may need manual restoration.

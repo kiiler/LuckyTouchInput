@@ -18,6 +18,7 @@ namespace Lucky.TouchInput.InputProbe
             editor.Dock = DockStyle.Fill;
             editor.Font = new Font("Segoe UI", 18f);
             editor.Multiline = true;
+            editor.ScrollBars = ScrollBars.Vertical;
 
             var form = new Form();
             form.Text = "Lucky Touch Input Probe";
@@ -28,11 +29,16 @@ namespace Lucky.TouchInput.InputProbe
             form.Controls.Add(editor);
             form.Shown += delegate { editor.Focus(); };
             form.Activated += delegate { editor.Focus(); };
+            int enterCount = 0;
             form.KeyDown += delegate(object sender, KeyEventArgs eventArgs) {
-                form.Text = "Lucky Touch Input Probe | KeyDown=" + eventArgs.KeyCode;
+                if (eventArgs.KeyCode == Keys.Enter) enterCount++;
+                form.Text = "Lucky Touch Input Probe | KeyDown=" + eventArgs.KeyCode + " | EnterCount=" + enterCount;
             };
             editor.TextChanged += delegate {
-                form.Text = "Lucky Touch Input Probe | TextLength=" + editor.TextLength;
+                form.Text = "Lucky Touch Input Probe | TextLength=" + editor.TextLength + " | EnterCount=" + enterCount;
+            };
+            editor.MouseWheel += delegate(object sender, MouseEventArgs eventArgs) {
+                form.Text = "Lucky Touch Input Probe | Wheel=" + eventArgs.Delta;
             };
             Application.Run(form);
         }

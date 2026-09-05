@@ -1,0 +1,28 @@
+name: Bug report / 问题反馈
+description: Report an input, layout, or compatibility problem.
+body:
+  - type: markdown
+    attributes:
+      value: Please remove private text, hostnames, and credentials from screenshots and logs. / 请先遮掉截图和日志中的私人信息。
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境
+      description: App version, Windows build, resolution, display scale, remote client/device (if any), and IME.
+      placeholder: "0.1.0-alpha; Windows 11 26100; 1920×1080 at 150%; tablet / remote client; Microsoft Pinyin / Rime"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduce / 如何复现
+      description: Include the selected mode, Enter policy, native-keyboard policy, and exact steps.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected and actual / 预期与实际
+      description: Attach a sanitized screenshot if geometry is wrong. Say whether the interfering keyboard is Touch Keyboard or osk.exe.
+    validations:
+      required: true

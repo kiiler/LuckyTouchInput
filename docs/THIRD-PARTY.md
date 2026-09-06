@@ -8,3 +8,10 @@ The self-contained Windows package redistributes the Microsoft .NET and Windows 
 into the ZIP's `licenses/` directory. Framework-dependent builds use the user's installed runtime.
 
 The support QR images were supplied by the author. They are optional support links, not dependencies.
+
+The foldable usage image (`assets/foldable-uu-codex.png`) is based on an author-supplied photo,
+cropped and lightly denoised. Its private title and conversation were replaced with AI-generated
+example content; AI also supplied background cleanup material. The photographed device, keyboard,
+composer controls, and taskbar were retained. See `docs/FOLDABLE-UU.md` for provenance.
+NetEase UU, Codex, Windows, and their displayed interfaces and marks belong to their respective
+owners. Their appearance illustrates use, not endorsement, affiliation, or client certification.

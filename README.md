@@ -64,6 +64,21 @@ The recommended starting point for remote-control clients is **Follow foreground
 stay open, and Windows touch-keyboard suppression left off. Enable suppression only if the native
 keyboard repeatedly appears over the remote session.
 
+## In use: a foldable, UU Super Screen, and Codex
+
+With the foldable unfolded, NetEase UU streams the Windows desktop: Codex occupies the upper
+area, Lucky Touch Input runs below it on the Windows host, and the taskbar remains beneath the
+keyboard. UU handles the connection and desktop image; Lucky Touch Input handles host-side keys
+and window avoidance. No Codex plugin is needed.
+
+![Foldable example: Codex above Lucky Touch Input and the taskbar; AI-replaced conversation](assets/foldable-uu-codex.png)
+
+Based on an author-supplied early-alpha photo, cropped and lightly denoised with background cleanup.
+The private title and conversation were replaced with AI-generated example content. The keyboard,
+Start button, model selector, and clock retain the original photo. This is not an unmodified chat
+screenshot, the new phone large-key layout, or a latency/compatibility benchmark.
+See the [foldable setup guide](docs/FOLDABLE-UU.md) for setup, international-client scope, and image provenance.
+
 ## Build and run
 
 Install the .NET 10 SDK, then:

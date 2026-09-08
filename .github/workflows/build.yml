@@ -20,7 +20,7 @@ jobs:
         run: dotnet restore LuckyTouchInput.sln
       - name: Build
         run: dotnet build LuckyTouchInput.sln -c Release --no-restore
-      - name: Settings and geometry checks
+      - name: Settings, layouts, and native ownership checks
         run: dotnet run --project tests/LuckyTouchInput.Tests -c Release --no-build
       - name: Publish portable Windows build
         shell: pwsh

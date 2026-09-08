@@ -3,7 +3,9 @@
     [string]$AppPath,
     [string]$ProbePath,
     [string]$ResultPath,
-    [string]$ScreenshotPath
+    [string]$ScreenshotPath,
+    [switch]$CheckOsk,
+    [string]$OskCloseRequestPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +17,13 @@ if (-not (Test-Path -LiteralPath $appPath)) { throw "Build output not found: $ap
 if (-not (Test-Path -LiteralPath $probePath)) { throw "Probe output not found: $probePath" }
 if (Get-Process LuckyTouchInput -ErrorAction SilentlyContinue) {
     throw 'Close any existing Lucky Touch Input instance before running acceptance.'
+}
+if ($CheckOsk -and (Get-Process osk -ErrorAction SilentlyContinue)) {
+    throw 'Close the pre-existing OSK before running optional native-keyboard acceptance.'
+}
+if ($OskCloseRequestPath -and (-not $CheckOsk -or (Test-Path -LiteralPath $OskCloseRequestPath) -or
+    -not (Test-Path -LiteralPath (Split-Path -Parent $OskCloseRequestPath) -PathType Container))) {
+    throw 'Use a new OSK close-request file in an existing disposable lab directory, with -CheckOsk.'
 }
 $profilePath = Join-Path $env:LOCALAPPDATA 'Lucky\TouchInput\settings.ini'
 $legacyPath = Join-Path $env:LOCALAPPDATA 'LuckyTouchKeyboard\settings.ini'
@@ -76,7 +85,7 @@ public static class LuckyTouchInputAcceptanceNative
     public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, uint attribute, out RECT rect, int size);
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr LoadKeyboardLayout(string layout, uint flags);
@@ -196,7 +205,28 @@ function Read-EditorText {
 
 function Assert-Check([string]$Name, [bool]$Passed) {
     $script:checks[$Name] = $Passed
+    Write-Output ("CHECK {0}: {1}" -f $Name, $Passed)
     if (-not $Passed) { throw "UI check failed: $Name" }
+}
+
+function Close-FixtureOsk([System.Diagnostics.Process]$Process, [IntPtr]$Handle) {
+    $posted = [LuckyTouchInputAcceptanceNative]::PostMessage($Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+    $closeError = if ($posted) { 0 } else { [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
+    Write-Output "OSK close request: posted=$posted, Win32Error=$closeError, PID=$($Process.Id)"
+    if ($Process.WaitForExit(2000)) { return }
+    # OSK can run with UIAccess at a higher integrity level. Do not elevate the app/probe,
+    # relax UIPI, or treat failure to send WM_CLOSE as a keyboard regression. A disposable
+    # lab controller may close this exact fixture, or a person may use OSK's own close button.
+    if ($OskCloseRequestPath) {
+        $request = [ordered]@{ ProcessId = $Process.Id; StartTimeUtc = $Process.StartTime.ToUniversalTime().ToString('o');
+            SessionId = $Process.SessionId; ExpectedPath = (Join-Path $env:WINDIR 'System32\osk.exe') }
+        [IO.File]::WriteAllText($OskCloseRequestPath, ($request | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    }
+    Write-Output 'Waiting up to 60 seconds for the fixture OSK to be closed; Lucky and the probe remain unelevated.'
+    if (-not $Process.WaitForExit(60000)) { throw 'Fixture OSK still running; close it before retrying acceptance.' }
+    if ($OskCloseRequestPath -and (Test-Path -LiteralPath $OskCloseRequestPath)) {
+        Remove-Item -LiteralPath $OskCloseRequestPath
+    }
 }
 
 $checks = [ordered]@{}
@@ -204,6 +234,7 @@ $checks = [ordered]@{}
 $probe = $null
 $app = $null
 $recoveryApp = $null
+$oskProcess = $null
 $result = $null
 try {
     $beforeTap = Get-RegistryState 'TouchKeyboardTapInvoke'
@@ -326,11 +357,20 @@ try {
     Click-KeyboardButton '⌨  打开键盘'
     Click-KeyboardButton '设置'
     Click-KeyboardButton '回车：收起'
-    Click-KeyboardButton '系统键盘：共存'
+    Click-KeyboardButton '系统键盘：让位'
     $leasePath = Join-Path $env:LOCALAPPDATA 'Lucky\TouchInput\native-keyboard-lease.ini'
     Assert-Check 'suppression_lease_created' (Test-Path -LiteralPath $leasePath)
     Assert-Check 'suppression_opt_in' ((Get-RegistryState 'TouchKeyboardTapInvoke') -eq '0')
-    Click-KeyboardButton '系统键盘：抑制'
+    Click-KeyboardButton '数字'
+    Click-KeyboardButton '—'
+    Click-KeyboardButton '—'
+    Assert-Check 'collapsed_releases_native_lease' (-not (Test-Path -LiteralPath $leasePath))
+    Assert-Check 'collapsed_restores_native_settings' ($beforeTap -eq (Get-RegistryState 'TouchKeyboardTapInvoke') -and
+        $beforeDesktop -eq (Get-RegistryState 'EnableDesktopModeAutoInvoke'))
+    Click-KeyboardButton '⌨  打开键盘'
+    Assert-Check 'expanded_reacquires_native_lease' (Test-Path -LiteralPath $leasePath)
+    Click-KeyboardButton '设置'
+    Click-KeyboardButton '系统键盘：互斥'
     Assert-Check 'suppression_round_trip' ($beforeTap -eq (Get-RegistryState 'TouchKeyboardTapInvoke') -and
         $beforeDesktop -eq (Get-RegistryState 'EnableDesktopModeAutoInvoke'))
     Assert-Check 'lease_removed_after_opt_out' (-not (Test-Path -LiteralPath $leasePath))
@@ -383,6 +423,80 @@ try {
     $editor.SetFocus()
     Start-Sleep -Milliseconds 600
     Assert-Check 'restore_from_minimize' ([LuckyTouchInputAcceptanceNative]::IsWindowVisible($appHwnd))
+
+    # Common preset uses standard row staggering and one-shot modifiers.
+    Click-KeyboardButton '设置'
+    Click-KeyboardButton '布局：标准'
+    Click-KeyboardButton '布局：手机大键'
+    Assert-Check 'common_layout_saved' ((Get-Content -LiteralPath $profilePath -Raw) -match 'Layout=Everyday')
+    Click-KeyboardButton '数字'
+    Click-KeyboardButton 'Ctrl'
+    Click-KeyboardButton 'a'
+    Click-KeyboardButton 'b'
+    Assert-Check 'common_ctrl_select_all_and_release' ((Read-EditorText) -eq 'b')
+    Click-KeyboardButton '←'
+    Click-KeyboardButton 'a'
+    Assert-Check 'common_cursor_edit' ((Read-EditorText) -eq 'ab')
+    Click-KeyboardButton '⇧'
+    Click-KeyboardButton '→'
+    Click-KeyboardButton 'c'
+    Assert-Check 'common_shift_selection_and_release' ((Read-EditorText) -eq 'ac')
+    Click-KeyboardButton '设置'
+    Click-KeyboardButton '回车：常驻'
+    Click-KeyboardButton '数字'
+    Click-KeyboardButton '⇧'
+    Click-KeyboardButton '回车'
+    [LuckyTouchInputAcceptanceNative]::GetWindowRect($appHwnd, [ref]$sample) | Out-Null
+    Assert-Check 'modified_enter_keeps_keyboard' ($sample.Height -gt 200)
+    Assert-Check 'modified_enter_reaches_editor' ((Read-EditorText) -match '^ac\r?\n$')
+    Click-KeyboardButton '设置'
+    Click-KeyboardButton '回车：收起'
+    Click-KeyboardButton '数字'
+    Click-KeyboardButton '工具'
+    Click-KeyboardButton '编辑'
+    Click-KeyboardButton '全选'
+    Click-KeyboardButton 'c'
+    Assert-Check 'edit_panel_select_all' ((Read-EditorText) -eq 'c')
+    Click-KeyboardButton '数字'
+    Click-KeyboardButton '设置'
+    Click-KeyboardButton '布局：常用'
+    Click-KeyboardButton '数字'
+
+    if ($CheckOsk) {
+        foreach ($policy in @('yield', 'mutual')) {
+            if ($policy -eq 'mutual') {
+                Click-KeyboardButton '设置'
+                Click-KeyboardButton '系统键盘：让位'
+                Click-KeyboardButton '数字'
+            }
+            # Only the OSK created by this opt-in fixture is closed by the harness.
+            $oskProcess = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\osk.exe') -PassThru
+            Write-Output "OSK fixture launcher PID: $($oskProcess.Id)"
+            $oskHwnd = Get-VisibleWindow $oskProcess
+            Start-Sleep -Milliseconds 1200
+            Assert-Check "osk_${policy}_remains_visible" ([LuckyTouchInputAcceptanceNative]::IsWindowVisible($oskHwnd))
+            Assert-Check "osk_${policy}_lucky_yields" (-not [LuckyTouchInputAcceptanceNative]::IsWindowVisible($appHwnd))
+            Assert-Check "osk_${policy}_lease_released" (-not (Test-Path -LiteralPath $leasePath))
+            Assert-Check "osk_${policy}_settings_restored" ($beforeTap -eq (Get-RegistryState 'TouchKeyboardTapInvoke') -and
+                $beforeDesktop -eq (Get-RegistryState 'EnableDesktopModeAutoInvoke'))
+            [LuckyTouchInputAcceptanceNative]::GetWindowRect($probeHwnd, [ref]$sample) | Out-Null
+            Assert-Check "osk_${policy}_target_restored" ($sample.Left -eq $beforeRect.Left -and $sample.Top -eq $beforeRect.Top -and
+                $sample.Width -eq $beforeRect.Width -and $sample.Height -eq $beforeRect.Height)
+            Close-FixtureOsk $oskProcess $oskHwnd
+            Assert-Check "osk_${policy}_fixture_closed" ($oskProcess.HasExited -and
+                -not [LuckyTouchInputAcceptanceNative]::IsWindowVisible($oskHwnd))
+            [LuckyTouchInputAcceptanceNative]::ForceForeground($probeHwnd) | Out-Null
+            $editor.SetFocus()
+            Start-Sleep -Milliseconds 600
+            Assert-Check "osk_${policy}_lucky_resumes" ([LuckyTouchInputAcceptanceNative]::IsWindowVisible($appHwnd))
+            if ($policy -eq 'mutual') {
+                Assert-Check 'osk_return_reacquires_lease' (Test-Path -LiteralPath $leasePath)
+                Click-KeyboardButton '设置'
+                Click-KeyboardButton '系统键盘：互斥'
+                Click-KeyboardButton '数字'
+            }
+        }
+    }
 
     if ($ScreenshotPath) {
         Start-Sleep -Seconds 4
@@ -454,6 +568,10 @@ try {
     }
 }
 finally {
+    if ($null -ne $oskProcess -and -not $oskProcess.HasExited) {
+        $oskProcess.CloseMainWindow() | Out-Null
+        $oskProcess.WaitForExit(3000) | Out-Null
+    }
     if ($null -ne $recoveryApp -and (Get-Process -Id $recoveryApp.Id -ErrorAction SilentlyContinue)) {
         Stop-Process -Id $recoveryApp.Id -Force
     }

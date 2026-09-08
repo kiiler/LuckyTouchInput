@@ -9,6 +9,10 @@ into the ZIP's `licenses/` directory. Framework-dependent builds use the user's 
 
 The support QR images were supplied by the author. They are optional support links, not dependencies.
 
+`assets/lucky-touch-input-everyday.png` is rendered from this project's actual WinForms controls
+with runtime input and hooks disabled. It contains no user desktop or conversation and uses no AI
+image editing. It documents layout geometry, not a hardware input acceptance result.
+
 The foldable usage image (`assets/foldable-uu-codex.png`) is based on an author-supplied photo,
 cropped and lightly denoised. Its private title and conversation were replaced with AI-generated
 example content; AI also supplied background cleanup material. The photographed device, keyboard,

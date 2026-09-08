@@ -18,7 +18,16 @@ test controls. These images are control-layout renders, not screenshots of a liv
 closes without a save prompt, so UI Automation can verify input and window restoration safely.
 
 The acceptance script also accepts `-AppPath`, `-ProbePath`, `-ResultPath`, and `-ScreenshotPath`
-for self-contained builds in an offline VM. `scripts/Publish.ps1` checks the SDK before replacing
+for self-contained builds in an offline VM. Add `-CheckOsk` to verify handoff to the actual Windows
+accessibility keyboard; it refuses a pre-existing OSK and requests closure only of its own fixture.
+Windows may deny a normal-integrity script's close message to UIAccess OSK. In that case the suite
+waits 60 seconds for a person to close OSK, or for a disposable lab controller using the optional
+`-OskCloseRequestPath` JSON file. A controller must verify the PID, start time, session, and system
+executable path before closing that exact fixture. Never elevate Lucky or the input probe to make
+the test pass, disable UIPI, or use this option on a desktop relying on OSK for accessibility.
+Virtual work-area tests size the actual
+layout controls independently of the runner's screen limit; only the interactive suite establishes
+native window geometry. `scripts/Publish.ps1` checks the SDK before replacing
 an old package and validates every local documentation link inside the ZIP. The icon is an original
 vector in `assets/icon.svg`; regenerate the multi-size ICO with `scripts/Build-Icon.ps1` on Windows.
 

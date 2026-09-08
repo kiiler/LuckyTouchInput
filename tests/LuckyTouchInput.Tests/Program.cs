@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 using Lucky.TouchInput;
 
-internal static class Program
+internal static partial class Program
 {
     private static int failures;
     private static int checks;
@@ -95,6 +95,8 @@ internal static class Program
 
         string settingsBefore = File.Exists(UserPreferences.ConfigPath) ? File.ReadAllText(UserPreferences.ConfigPath) : null;
         string leaseBefore = File.Exists(UserPreferences.NativeKeyboardLeasePath) ? File.ReadAllText(UserPreferences.NativeKeyboardLeasePath) : null;
+        CheckEverydayLayouts(args);
+        CheckNativeInterop();
         foreach (Rectangle work in new[] { new Rectangle(0, 0, 1280, 752),
             new Rectangle(0, 0, 3840, 2064), new Rectangle(0, 0, 2480, 2152),
             new Rectangle(0, 0, 800, 1280) })
@@ -102,15 +104,14 @@ internal static class Program
             int standardKeyHeight;
             using (var standard = new KeyboardForm(new UserPreferences(), false))
             {
-                standard.ApplyKeyboardBounds(LayoutPolicy.KeyboardBounds(work, KeyboardMode.FollowForeground, 38, 0));
-                LayoutTree(standard);
+                LayoutVirtualSurface(standard, LayoutPolicy.KeyboardBounds(work, KeyboardMode.FollowForeground, 38, 0));
                 standardKeyHeight = Descendants(standard).Single(c => c.Text == "q").Height;
             }
             var prefs = new UserPreferences { LargeKeys = true, FollowHeight = 48 };
             using (var form = new KeyboardForm(prefs, false))
             {
-                form.ApplyKeyboardBounds(LayoutPolicy.KeyboardBounds(work, prefs.Mode, 48, 0, true));
-                LayoutTree(form);
+                Rectangle desired = LayoutPolicy.KeyboardBounds(work, prefs.Mode, 48, 0, true);
+                Control surface = LayoutVirtualSurface(form, desired);
                 Control[] controls = Descendants(form).ToArray();
                 Control enter = controls.Single(c => c.Text == "回车");
                 Control q = controls.Single(c => c.Text == "q");
@@ -125,7 +126,7 @@ internal static class Program
                 Check("letter keys taller" + scenario, true, q.Height > standardKeyHeight);
                 if (work.Width == 3840)
                     Check("phone keys at least 25 percent taller", true, q.Height >= standardKeyHeight * 1.25);
-                Check("actual keyboard bounds above taskbar" + scenario, work.Bottom, form.Bottom);
+                Check("configured surface above taskbar" + scenario, work.Bottom, desired.Top + surface.Height);
                 Check("all typing buttons usable" + scenario, true,
                     controls.Where(c => c is RoundedButton && c.Tag is ushort).All(c => c.Width >= 24 && c.Height >= 24));
                 if (args.Length == 2 && args[0] == "--render-directory")
@@ -136,9 +137,9 @@ internal static class Program
                     form.Opacity = 0;
                     form.Show();
                     LayoutTree(form);
-                    using (var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height))
+                    using (var bitmap = new Bitmap(surface.Width, surface.Height))
                     {
-                        form.DrawToBitmap(bitmap, form.ClientRectangle);
+                        surface.DrawToBitmap(bitmap, surface.ClientRectangle);
                         bitmap.Save(Path.Combine(args[1], "large-keys-" + work.Width + ".png"));
                     }
                     form.Hide();
@@ -174,6 +175,20 @@ internal static class Program
             yield return child;
             foreach (Control descendant in Descendants(child)) yield return descendant;
         }
+    }
+
+    private static Control LayoutVirtualSurface(KeyboardForm form, Rectangle desired)
+    {
+        form.ApplyKeyboardBounds(desired);
+        // Form.SetBoundsCore caps native window size at this machine's MaxWindowTrackSize.
+        // Virtual 4K/foldable fixtures must not depend on the runner's physical display.
+        // Measure/paint the real layout controls at the requested size; native window bounds
+        // and actual taskbar clearance are verified separately by the interactive VM harness.
+        Control surface = form.Controls.OfType<TableLayoutPanel>().Single();
+        surface.Dock = DockStyle.None;
+        surface.Bounds = new Rectangle(Point.Empty, desired.Size);
+        LayoutTree(form);
+        return surface;
     }
 
     private static void LayoutTree(Control parent)

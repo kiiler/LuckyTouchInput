@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - 0.1.0-alpha.1
+## [0.1.0-alpha.1] - 2026-09-08
 
 - Add an opt-in phone large-key preset: 48% height, larger utility labels, smaller margins,
   and a compact toolbar. Height remains adjustable; the preset does not change Windows DPI/resolution.
@@ -9,9 +9,22 @@
 - Exclude native input surfaces and accessibility OSK from foreground window-avoidance targets.
 - Add real WinForms control-layout tests across 1280, 3840, foldable, and portrait work areas.
 - Package filenames default to the version in the application project.
+- Add an Everyday preset with desktop row staggering, Tab, one-shot Ctrl, cursor arrows, and
+  a Tools → Edit panel. Existing layout settings migrate; selecting a preset resets its height.
+- Keep Shift+Tab, Shift+arrow, and Ctrl/Shift+Enter usable; only bare Enter triggers optional collapse.
+- Use measured GDI text dimensions so portrait Backspace/Enter labels stay on one line.
+- Release native suppression on collapse, target loss, secure-surface detection, and exit. Yield to
+  visible accessibility OSK without terminating it, and restore the target while yielding.
+- Avoid repeated failed takeover; confirm modern touch panes by geometry rather than process alone.
+- Persist suppression recovery before registry writes, preserve detected external preference changes,
+  recover alpha leases, and retain incomplete leases instead of replacing the recovery baseline.
+- Split keyboard ownership policy and registry leases out of the UI/settings code. Dispose replaced
+  font/region resources, and avoid touching disposed buttons after a layout switch.
 
-The published alpha package is unchanged. The candidate build passes 113 settings/control-layout
-checks; the prior 34-check clean-VM acceptance applies only to the published alpha, not this candidate.
+Validation: 350 settings/control-layout/ownership/isolated-registry checks and 59 interactive checks
+pass on offline Windows 11 build 26100. The app and probe remain unelevated; the lab controller
+closes only its verified OSK fixtures when Windows denies the harness's close message. Native touch
+popup timing, physical touch, Chinese composition, and UAC remain outside this VM acceptance.
 
 ## [0.1.0-alpha] - 2026-09-05
 

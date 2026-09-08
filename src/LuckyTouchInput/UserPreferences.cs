@@ -21,7 +21,15 @@ namespace Lucky.TouchInput
         internal int LeftGap;
         internal bool CollapseAfterEnter;
         internal bool SuppressNativeKeyboard;
-        internal bool LargeKeys;
+        internal KeyboardLayout Layout = KeyboardLayout.Standard;
+        // Retain the alpha.1 setting/API as a migration alias.
+        internal bool LargeKeys
+        {
+            get { return Layout == KeyboardLayout.PhoneLarge; }
+            set { if (value) Layout = KeyboardLayout.PhoneLarge;
+                else if (Layout == KeyboardLayout.PhoneLarge) Layout = KeyboardLayout.Standard; }
+        }
+        internal bool CompactToolbar { get { return Layout != KeyboardLayout.Standard; } }
 
         internal static UserPreferences Load()
         {
@@ -50,6 +58,7 @@ namespace Lucky.TouchInput
         internal static UserPreferences Parse(string[] lines, bool legacy)
         {
             var preferences = new UserPreferences();
+            KeyboardLayout? explicitLayout = null;
             foreach (string rawLine in lines)
             {
                 string[] parts = rawLine.Split(new[] { '=' }, 2);
@@ -96,7 +105,10 @@ namespace Lucky.TouchInput
                     preferences.SuppressNativeKeyboard = flag;
                 else if (key == "LargeKeys" && Boolean.TryParse(value, out flag))
                     preferences.LargeKeys = flag;
+                else if (key == "Layout" && Enum.TryParse(value, true, out KeyboardLayout layout) &&
+                    Enum.IsDefined(layout)) explicitLayout = layout;
             }
+            if (explicitLayout.HasValue) preferences.Layout = explicitLayout.Value;
             if (preferences.Mode == KeyboardMode.PinnedApplication &&
                 String.IsNullOrWhiteSpace(preferences.PinnedProcessName))
                 preferences.Mode = KeyboardMode.FollowForeground;
@@ -125,7 +137,7 @@ namespace Lucky.TouchInput
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
                 File.WriteAllLines(temporary, new[] {
-                    "SchemaVersion=1", "Mode=" + Mode,
+                    "SchemaVersion=2", "Mode=" + Mode,
                     "PinnedProcessName=" + PinnedProcessName,
                     "PinnedHeight=" + PinnedHeight.ToString(CultureInfo.InvariantCulture),
                     "FollowHeight=" + FollowHeight.ToString(CultureInfo.InvariantCulture),
@@ -133,7 +145,7 @@ namespace Lucky.TouchInput
                     "LeftGap=" + LeftGap.ToString(CultureInfo.InvariantCulture),
                     "CollapseAfterEnter=" + CollapseAfterEnter,
                     "SuppressNativeKeyboard=" + SuppressNativeKeyboard,
-                    "LargeKeys=" + LargeKeys
+                    "LargeKeys=" + LargeKeys, "Layout=" + Layout
                 });
                 File.Move(temporary, path, true);
             }
@@ -147,9 +159,18 @@ namespace Lucky.TouchInput
 
         internal void ResetCurrentLayout()
         {
-            HeightPercent = LargeKeys ? 48 : Mode == KeyboardMode.Floating ? 34 : 42;
+            HeightPercent = DefaultHeight;
             LeftGap = 0;
             Save();
+        }
+
+        internal int DefaultHeight { get { return LargeKeys ? 48 :
+            Layout == KeyboardLayout.Everyday ? 44 : Mode == KeyboardMode.Floating ? 34 : 42; } }
+
+        internal void SelectLayout(KeyboardLayout layout)
+        {
+            Layout = Enum.IsDefined(layout) ? layout : KeyboardLayout.Standard;
+            HeightPercent = DefaultHeight;
         }
     }
 }

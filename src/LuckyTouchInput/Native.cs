@@ -3,11 +3,17 @@ using Accessibility;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace Lucky.TouchInput
 {
+    internal struct SystemKeyboardState
+    {
+        internal bool TouchVisible, OskVisible;
+        internal bool AnyVisible { get { return TouchVisible || OskVisible; } }
+    }
     [StructLayout(LayoutKind.Sequential)]
     internal struct RECT
     {
@@ -150,6 +156,9 @@ namespace Lucky.TouchInput
         [DllImport("dwmapi.dll")]
         private static extern int DwmGetWindowAttribute(IntPtr hwnd, uint attribute,
             out RECT rect, int size);
+        [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+        private static extern int GetCloakedAttribute(IntPtr hwnd, uint attribute,
+            out uint cloaked, int size);
 
         internal static bool GetVisibleWindowRect(IntPtr hwnd, out RECT rect)
         {
@@ -311,8 +320,7 @@ namespace Lucky.TouchInput
             {
                 RECT rect;
                 pane = new FrameworkInputPane();
-                ((IFrameworkInputPane)pane).Location(out rect);
-                return rect;
+                return ((IFrameworkInputPane)pane).Location(out rect) == 0 ? rect : new RECT();
             }
             // The input pane is not available on every Windows desktop surface.
             catch (Exception) { return new RECT(); }
@@ -322,41 +330,75 @@ namespace Lucky.TouchInput
             }
         }
 
-        internal static void HideSystemTouchKeyboard(IntPtr hwnd)
+        internal static SystemKeyboardState GetSystemKeyboardState(Rectangle workingArea)
         {
-            RECT pane = InputPaneRect();
-            if (pane.Width <= 0 || pane.Height <= 0) return;
-            // Never toggle: a pane closing between Location and Toggle would reopen it.
-            // Candidate-only windows are too small to contain the reported input pane.
+            var state = new SystemKeyboardState();
+            VisitNativeKeyboards(workingArea, delegate(IntPtr window, bool osk) {
+                if (osk) state.OskVisible = true;
+                else state.TouchVisible = true;
+            });
+            return state;
+        }
+
+        private static void VisitNativeKeyboards(Rectangle workingArea, Action<IntPtr, bool> visit)
+        {
+            RECT paneRect = InputPaneRect();
+            Rectangle pane = Rectangle.FromLTRB(paneRect.Left, paneRect.Top, paneRect.Right, paneRect.Bottom);
             EnumWindows(delegate(IntPtr window, IntPtr parameter) {
-                if (!IsWindowVisible(window)) return true;
-                string process = ProcessName(window);
-                if (!String.Equals(process, "TextInputHost", StringComparison.OrdinalIgnoreCase) &&
-                    !String.Equals(process, "TabTip", StringComparison.OrdinalIgnoreCase) &&
-                    !String.Equals(process, "WindowsInputExperience", StringComparison.OrdinalIgnoreCase))
-                    return true;
+                if (!IsWindowVisible(window) || IsIconic(window)) return true;
                 RECT rect;
-                if (!GetWindowRect(window, out rect)) return true;
-                int width = Math.Max(0, Math.Min(rect.Right, pane.Right) - Math.Max(rect.Left, pane.Left));
-                int height = Math.Max(0, Math.Min(rect.Bottom, pane.Bottom) - Math.Max(rect.Top, pane.Top));
-                if ((long)width * height >= (long)pane.Width * pane.Height * 9 / 10)
-                    ShowWindow(window, 0);
+                if (!GetWindowRect(window, out rect) || rect.Width <= 0 || rect.Height <= 0) return true;
+                Rectangle bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+                if (!workingArea.IntersectsWith(bounds)) return true;
+                uint cloaked;
+                if (GetCloakedAttribute(window, 14, out cloaked, sizeof(uint)) == 0 && cloaked != 0) return true;
+                string process = ProcessName(window);
+                bool osk = String.Equals(process, "osk", StringComparison.OrdinalIgnoreCase);
+                if (osk || KeyboardInteropPolicy.IsConfirmedTouchWindow(process, WindowClass(window), bounds, pane))
+                    visit(window, osk);
                 return true;
             }, IntPtr.Zero);
         }
 
-        internal static bool Key(ushort virtualKey, bool shifted)
+        internal static void HideSystemTouchKeyboard(IntPtr owner)
+        {
+            if (owner == IntPtr.Zero || !IsWindow(owner)) return;
+            // Hide only confirmed touch panes on our monitor. Never toggle, kill OSK, or hide
+            // a TextInputHost process merely because it also hosts candidates/emoji/voice UI.
+            VisitNativeKeyboards(Screen.FromHandle(owner).WorkingArea, delegate(IntPtr window, bool osk) {
+                if (!osk) ShowWindow(window, 0);
+            });
+        }
+
+        internal static bool Key(ushort virtualKey, bool shifted, bool controlled = false)
+        {
+            bool sent = Submit(KeySequence(virtualKey, shifted, controlled));
+            if (!sent && (shifted || controlled))
+            {
+                var release = new List<INPUT>();
+                if (shifted) release.Add(KeyInput(0x10, true));
+                if (controlled) release.Add(KeyInput(0x11, true));
+                Submit(release);
+            }
+            return sent;
+        }
+
+        internal static List<INPUT> KeySequence(ushort virtualKey, bool shifted, bool controlled)
         {
             var inputs = new List<INPUT>();
+            if (controlled) inputs.Add(KeyInput(0x11, false));
             if (shifted) inputs.Add(KeyInput(0x10, false));
             inputs.Add(KeyInput(virtualKey, false));
             inputs.Add(KeyInput(virtualKey, true));
             if (shifted) inputs.Add(KeyInput(0x10, true));
-            return Submit(inputs);
+            if (controlled) inputs.Add(KeyInput(0x11, true));
+            return inputs;
         }
 
         internal static bool Chord(ushort modifier, ushort virtualKey)
         {
+            if (modifier == 0x11 || modifier == 0x10)
+                return Key(virtualKey, modifier == 0x10, modifier == 0x11);
             var inputs = new List<INPUT> {
                 KeyInput(modifier, false), KeyInput(virtualKey, false),
                 KeyInput(virtualKey, true), KeyInput(modifier, true)

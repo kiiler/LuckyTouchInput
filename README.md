@@ -8,13 +8,12 @@ Adaptive on-screen keyboard and input panel for Windows tablets and remote sessi
 
 [简体中文](README.zh-CN.md)
 
-In development: `0.1.0-alpha.1` adds an opt-in phone large-key preset under Settings, a wider
-bottom-right Enter key, and a Tools panel for scrolling/candidate paging. The preset starts at 48%
-height and remains adjustable; it does not change Windows DPI or resolution. A host streaming a
-4K desktop cannot infer the phone's physical size from its own display dimensions alone.
-The download and screenshots below still describe the published first alpha, not this candidate.
+`0.1.0-alpha.1` adds Standard / Phone large keys / Everyday layouts and revised
+Windows-keyboard handoff. Everyday adds Tab, one-shot Ctrl, cursor keys, and an editing panel;
+Phone large keys keeps the simpler bottom row. This prerelease passes 350 automated checks and
+59 interactive checks in an offline Windows 11 VM. Validation limits are described below.
 
-[Download Windows x64](https://github.com/fofc12/LuckyTouchInput/releases/tag/v0.1.0-alpha) ·
+[Download Windows x64](https://github.com/fofc12/LuckyTouchInput/releases/tag/v0.1.0-alpha.1) ·
 [Report a problem](https://github.com/fofc12/LuckyTouchInput/issues)
 
 ![Lucky Touch Input main keyboard](assets/lucky-touch-input-main.png)
@@ -60,9 +59,8 @@ ARM64 packages are not provided yet.
    **Show keyboard** menu item, to restore the panel. Use `×` or the tray menu to exit.
    Starting the EXE again restores the existing instance instead of adding another keyboard.
 
-The recommended starting point for remote-control clients is **Follow foreground**, Enter set to
-stay open, and Windows touch-keyboard suppression left off. Enable suppression only if the native
-keyboard repeatedly appears over the remote session.
+Start with **Follow foreground**, Enter set to stay open, and the default **Yield** policy.
+The first alpha called its native policy coexist/suppress; alpha.1 uses yield/mutual exclusion.
 
 ## In use: a foldable, UU Super Screen, and Codex
 
@@ -109,6 +107,48 @@ pwsh -File scripts/Publish.ps1
 Settings are written to `%LOCALAPPDATA%\Lucky\TouchInput\settings.ini`. Enter keeps the keyboard
 open by default. Windows touch-keyboard suppression is off by default.
 
+## Everyday layout and Windows-keyboard handoff
+
+Cycle **Settings → Layout** (`设置 → 布局`) through:
+
+| Preset | Intended use and initial height |
+| --- | --- |
+| Standard | Existing controls; 42% in follow/pinned, 34% in floating mode |
+| Phone large keys | Five-button bottom row and wide, rightmost Enter; 48% (floating cap: 44%) |
+| Everyday | Desktop-style staggered rows, Tab, Ctrl, left/right arrows; 44% |
+
+Height stays adjustable; selecting a preset applies its default height. Legacy `LargeKeys` settings
+migrate without forcing existing users into a new layout. These presets do not change Windows DPI
+or resolution: a host streaming 4K cannot infer the phone's physical dimensions.
+
+![Everyday layout: actual WinForms control rendering at 1280 pixels wide](assets/lucky-touch-input-everyday.png)
+
+This is a control-layout rendering, not a phone photo or proof of successful input. Ctrl and Shift
+are one-shot: select a modifier, then a key, or tap the modifier again to cancel. Examples include
+Ctrl+A, Shift+Tab, and Shift+arrow. **Tools → Edit** (`工具 → 编辑`) adds select-all, copy, paste, cut,
+undo, redo, Home/End, and up/down arrows. Tools also retains scrolling and candidate paging.
+The collapse-on-Enter setting affects bare Enter only, not Shift/Ctrl+Enter.
+
+Change the native keyboard policy from Settings or the tray menu:
+
+| Situation | Behavior |
+| --- | --- |
+| Yield (`让位`, default) | Hide Lucky and restore the target while a Windows keyboard is detected on its monitor; do not change Windows keyboard preferences |
+| Mutual exclusion (`互斥`, experimental) | Temporarily suppress the touch keyboard only while Lucky is expanded with a valid target; release on collapse, target loss, or exit |
+| Accessibility On-Screen Keyboard / OSK | Always yield; never close OSK, change its startup, or stop Windows input services |
+
+Lucky resumes when the Windows keyboard disappears and the target is valid. Failed takeover waits
+for native dismissal instead of repeatedly fighting the same pane; tray/EXE reopening permits an
+explicit retry. Lease restoration preserves detected external preference changes; a forced kill
+leaves a lease for next-launch recovery.
+
+Modern touch panes require both window and input-pane geometry confirmation. A `TextInputHost`
+process alone is not enough to hide candidates, emoji, or voice UI. Automatic exclusion may be
+unavailable when Windows does not report a valid pane location. Use Windows touch-keyboard settings
+or yielding in that case, not service shutdown. See Microsoft's explanation of the separate
+[accessibility OSK](https://support.microsoft.com/en-us/accessibility/windows/use-the-on-screen-keyboard-osk-to-type).
+UAC, elevated input, and transient flashes over a real UU connection still require explicit testing.
+
 ## Update, migrate, remove
 
 - Exit before extracting an update into the same directory. Settings survive. If the directory
@@ -128,7 +168,8 @@ open by default. Windows touch-keyboard suppression is off by default.
 - Candidate paging: the buttons send Page Up / Page Down; the IME determines whether these page candidates.
 - Native keyboard appearing: experimental suppression handles the touch keyboard, not the separate
   accessibility On-Screen Keyboard (`osk.exe`). It never disables Windows input services or kills OSK.
-  Lucky Touch Input runs independently of the target application's lifetime.
+  Lucky yields to detected OSK. After target loss it releases suppression and remains in
+  the tray without occupying the screen.
 - Unsuitable window resizing: use Floating for apps with restrictive minimum sizes, games, or dialogs.
 - Microsoft Pinyin: the shortcut refuses to overwrite an existing custom double-pinyin mapping.
 
@@ -147,13 +188,13 @@ See [architecture](docs/ARCHITECTURE.md), [privacy](docs/PRIVACY.md),
 
 ## Project status
 
-`0.1.0-alpha` is the first public prerelease. The build passes 58 settings/layout assertions and 34
-offline clean-Windows-11 interactive checks: committed text, focus retention, settings and modes,
-Enter, scrolling, single-instance recovery, minimization, and native-settings crash recovery.
+`0.1.0-alpha.1` passes 350 settings/layout/ownership checks and 59 offline Windows 11 interactive
+checks: committed text, modifiers, settings and modes, Enter, scrolling, single-instance recovery,
+minimization, OSK handoff in both policies, and native-settings crash recovery.
 At 1280×752 working area, the visible seam is 3 px and the taskbar is unobstructed.
 See the [measured validation scope](docs/VALIDATION.md), including what has **not** been tested.
 
-![Clean Windows 11 acceptance at 1280×752](assets/lucky-touch-input-clean-win11.png)
+![Alpha.1 Windows 11 acceptance at 1280×752](assets/lucky-touch-input-clean-win11-alpha1.png)
 
 Real touch hardware, foldables, and remote-client combinations still need feedback. Passing a VM
 check is not proof of compatibility with every device.

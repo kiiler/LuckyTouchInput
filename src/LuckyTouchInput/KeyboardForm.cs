@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
@@ -27,6 +28,7 @@ namespace Lucky.TouchInput
         private RoundedButton settingsButton;
         private RoundedButton shiftButton;
         private RoundedButton rightShiftButton;
+        private RoundedButton ctrlButton;
         private Control auxiliaryRow;
         private PanelKind panel = PanelKind.Keys;
         private IntPtr targetWindow;
@@ -34,6 +36,9 @@ namespace Lucky.TouchInput
         private WINDOWPLACEMENT savedPlacement;
         private bool placementSaved;
         private bool shiftNext;
+        private bool ctrlNext;
+        private bool waitingForNativeDismissal;
+        private bool nativePolicyFailed;
         private bool collapsed;
         private bool advancedSettings;
         private DateTime lastPinnedForegroundUtc = DateTime.MinValue;
@@ -42,6 +47,7 @@ namespace Lucky.TouchInput
         private DateTime statusUntil = DateTime.MinValue;
         private NotifyIcon trayIcon;
         private TableLayoutPanel toolbar;
+        private ToolStripMenuItem nativePolicyMenu;
 
         protected override bool ShowWithoutActivation { get { return true; } }
 
@@ -64,8 +70,6 @@ namespace Lucky.TouchInput
         {
             preferences = settings;
             nativeKeyboardGuard = startRuntime ? new NativeKeyboardGuard() : null;
-            if (nativeKeyboardGuard != null && !nativeKeyboardGuard.Apply(preferences.SuppressNativeKeyboard))
-                preferences.SuppressNativeKeyboard = false;
             Text = "Lucky Touch Input";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             FormBorderStyle = FormBorderStyle.None;
@@ -154,8 +158,8 @@ namespace Lucky.TouchInput
             title = new Label();
             title.Dock = DockStyle.Fill;
             title.TextAlign = ContentAlignment.MiddleLeft;
-            title.Padding = new Padding(18, 0, 0, 0);
-            title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Regular);
+            title.Padding = new Padding(10, 0, 0, 0);
+            title.Font = new Font("Microsoft YaHei UI", 18f, FontStyle.Regular, GraphicsUnit.Pixel);
             title.ForeColor = Color.FromArgb(75, 75, 75);
             toolbar.Controls.Add(title, 0, 0);
             modeButton = ActionButton(String.Empty, delegate { CycleMode(); });
@@ -176,42 +180,56 @@ namespace Lucky.TouchInput
 
             auxiliaryRow = BuildNumberRow();
             root.Controls.Add(auxiliaryRow, 0, 1);
-            root.Controls.Add(KeyRow(new[] {
+            var qRow = new List<RoundedButton>();
+            if (preferences.Layout == KeyboardLayout.Everyday) qRow.Add(K("Tab", 0x09));
+            qRow.AddRange(new[] {
                 K("q", 0x51), K("w", 0x57), K("e", 0x45), K("r", 0x52), K("t", 0x54),
                 K("y", 0x59), K("u", 0x55), K("i", 0x49), K("o", 0x4F), K("p", 0x50)
-            }), 0, 2);
+            });
+            root.Controls.Add(KeyRow(qRow.ToArray()), 0, 2);
             root.Controls.Add(KeyRow(new[] {
-                Spacer(0.5f), K("a", 0x41), K("s", 0x53), K("d", 0x44), K("f", 0x46),
+                Spacer(preferences.Layout == KeyboardLayout.Everyday ? 1.25f : 0.5f),
+                K("a", 0x41), K("s", 0x53), K("d", 0x44), K("f", 0x46),
                 K("g", 0x47), K("h", 0x48), K("j", 0x4A), K("k", 0x4B),
-                K("l", 0x4C), Spacer(0.5f)
+                K("l", 0x4C), Spacer(preferences.Layout == KeyboardLayout.Everyday ? 0.75f : 0.5f)
             }), 0, 3);
-            shiftButton = ShiftKey();
-            rightShiftButton = ShiftKey();
+            shiftButton = ShiftKey(preferences.Layout == KeyboardLayout.Everyday ? 1.75f : 1.25f);
+            rightShiftButton = ShiftKey(preferences.Layout == KeyboardLayout.Everyday ? 2.25f : 1.25f);
             root.Controls.Add(KeyRow(new[] {
                 shiftButton, K("z", 0x5A), K("x", 0x58), K("c", 0x43),
                 K("v", 0x56), K("b", 0x42), K("n", 0x4E), K("m", 0x4D),
                 rightShiftButton
             }), 0, 4);
 
-            var actions = new TableLayoutPanel();
-            actions.Dock = DockStyle.Fill;
-            actions.RowCount = 1;
-            actions.ColumnCount = 5;
-            actions.Margin = new Padding(0);
-            float[] actionWeights = { 1.25f, 1f, 5f, 1f, 1.75f };
-            foreach (float weight in actionWeights)
-                actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, weight * 10f));
-            actions.Controls.Add(ActionButton("中 / 英", delegate { SendKey(0x10); }), 0, 0);
-            actions.Controls.Add(K(",", 0xBC), 1, 0);
-            actions.Controls.Add(K("空格", 0x20), 2, 0);
-            actions.Controls.Add(K("。", 0xBE), 3, 0);
-            var enter = K("回车", 0x0D);
+            var actions = new List<RoundedButton>();
+            ctrlButton = null;
+            if (preferences.Layout == KeyboardLayout.Everyday)
+            {
+                ctrlButton = PanelButton("Ctrl", delegate {
+                    ctrlNext = !ctrlNext;
+                    UpdateShiftButtons();
+                    SetStatus(ctrlNext ? "Ctrl：再点一个键发送快捷键，或再点 Ctrl 取消" : "已取消 Ctrl");
+                });
+                actions.Add(ctrlButton);
+            }
+            var language = PanelButton("中 / 英", delegate { ClearModifiers(); SendKey(0x10); });
+            language.AccessibleDescription = "1.25";
+            actions.Add(language);
+            actions.Add(K(",", 0xBC));
+            actions.Add(K("空格", 0x20, preferences.Layout == KeyboardLayout.Everyday ? 4f : 5f));
+            actions.Add(K("。", 0xBE));
+            if (preferences.Layout == KeyboardLayout.Everyday)
+            {
+                actions.Add(K("←", 0x25, 0.8f));
+                actions.Add(K("→", 0x27, 0.8f));
+            }
+            var enter = K("回车", 0x0D, 1.75f);
             enter.NormalColor = Color.FromArgb(0, 103, 192);
             enter.PressedColor = Color.FromArgb(0, 83, 160);
             enter.BackColor = enter.NormalColor;
             enter.ForeColor = Color.White;
-            actions.Controls.Add(enter, 4, 0);
-            root.Controls.Add(actions, 0, 5);
+            actions.Add(enter);
+            root.Controls.Add(KeyRow(actions.ToArray()), 0, 5);
             UpdateToolbar();
         }
 
@@ -220,6 +238,9 @@ namespace Lucky.TouchInput
             var menu = new ContextMenuStrip();
             menu.Items.Add("显示键盘", null, delegate { ShowKeyboard(); });
             menu.Items.Add("收起键盘", null, delegate { CollapseKeyboard(); });
+            nativePolicyMenu = new ToolStripMenuItem(NativePolicyLabel(), null, delegate { ToggleNativePolicy(); });
+            menu.Items.Add(nativePolicyMenu);
+            menu.Items.Add("Windows 触摸键盘设置", null, delegate { OpenTouchKeyboardSettings(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { Close(); });
 
@@ -233,6 +254,7 @@ namespace Lucky.TouchInput
 
         private void ShowKeyboard()
         {
+            waitingForNativeDismissal = false; // A deliberate reopen may retry Lucky priority.
             if (preferences.Mode == KeyboardMode.PinnedApplication &&
                 Native.FindProcessWindow(preferences.PinnedProcessName) == IntPtr.Zero)
             {
@@ -242,7 +264,6 @@ namespace Lucky.TouchInput
             }
             if (collapsed) ExpandKeyboard();
             RefreshState();
-            if (!Visible) Show();
         }
 
         private Control BuildNumberRow()
@@ -275,7 +296,7 @@ namespace Lucky.TouchInput
                 PanelButton(StartupSettings.Label, delegate { ToggleStartup(); }),
                 PanelButton("高度 −", delegate { AdjustHeight(-4); }),
                 PanelButton("高度 +", delegate { AdjustHeight(4); }),
-                PanelButton(preferences.LargeKeys ? "布局：手机大键" : "布局：标准", delegate { ToggleLargeKeys(); }),
+                PanelButton("布局：" + LayoutLabel(), delegate { CycleLayout(); }),
                 PanelButton("全 / 双", delegate { ToggleDoublePinyin(); }),
                 PanelButton("更多", delegate { ShowSettingsPage(true); })
             });
@@ -304,8 +325,22 @@ namespace Lucky.TouchInput
                 PanelButton("滚↑", delegate { ScrollTarget(3); }),
                 PanelButton("滚↓", delegate { ScrollTarget(-3); }),
                 K("←", 0x25), K("→", 0x27),
+                PanelButton("编辑", delegate { TogglePanel(PanelKind.Edit); }),
                 PanelButton("变量", delegate { TogglePanel(PanelKind.Variables); }),
                 PanelButton("提示", delegate { TogglePanel(PanelKind.Prompts); })
+            });
+        }
+
+        private Control BuildEditRow()
+        {
+            return KeyRow(new[] {
+                PanelButton("全选", delegate { SendChord(0x11, 0x41); }),
+                PanelButton("复制", delegate { SendChord(0x11, 0x43); }),
+                PanelButton("粘贴", delegate { SendChord(0x11, 0x56); }),
+                PanelButton("剪切", delegate { SendChord(0x11, 0x58); }),
+                PanelButton("撤销", delegate { SendChord(0x11, 0x5A); }),
+                PanelButton("重做", delegate { SendChord(0x11, 0x59); }),
+                K("Home", 0x24), K("End", 0x23), K("↑", 0x26), K("↓", 0x28)
             });
         }
 
@@ -339,17 +374,17 @@ namespace Lucky.TouchInput
             var button = new RoundedButton();
             button.Text = label;
             button.Tag = virtualKey;
-            button.LargeLabels = preferences.LargeKeys;
-            if (preferences.LargeKeys) button.Margin = new Padding(4);
+            button.LargeLabels = preferences.CompactToolbar;
+            if (preferences.CompactToolbar) button.Margin = new Padding(4);
             button.AccessibleDescription = weight.ToString(CultureInfo.InvariantCulture);
             button.Dock = DockStyle.Fill;
             button.Click += SendKeyClick;
             return button;
         }
 
-        private RoundedButton ShiftKey()
+        private RoundedButton ShiftKey(float weight = 1.25f)
         {
-            var button = K("⇧", 0x10, 1.25f);
+            var button = K("⇧", 0x10, weight);
             button.Click -= SendKeyClick;
             button.Click += delegate {
                 shiftNext = !shiftNext;
@@ -374,8 +409,8 @@ namespace Lucky.TouchInput
             button.Text = label;
             button.Dock = DockStyle.Fill;
             button.Margin = new Padding(5, 8, 5, 8);
-            button.LargeLabels = preferences.LargeKeys;
-            if (preferences.LargeKeys) button.Margin = new Padding(4);
+            button.LargeLabels = preferences.CompactToolbar;
+            if (preferences.CompactToolbar) button.Margin = new Padding(4);
             button.Click += click;
             return button;
         }
@@ -385,8 +420,8 @@ namespace Lucky.TouchInput
             var button = new RoundedButton();
             button.Text = label;
             button.Tag = null;
-            button.LargeLabels = preferences.LargeKeys;
-            if (preferences.LargeKeys) button.Margin = new Padding(4);
+            button.LargeLabels = preferences.CompactToolbar;
+            if (preferences.CompactToolbar) button.Margin = new Padding(4);
             button.AccessibleDescription = "1";
             button.Dock = DockStyle.Fill;
             button.Click += click;
@@ -426,17 +461,19 @@ namespace Lucky.TouchInput
             var button = sender as RoundedButton;
             if (button == null || button.Tag == null) return;
             ushort virtualKey = (ushort)button.Tag;
-            bool shifted = shiftNext && (virtualKey >= 0x30 && virtualKey <= 0x5A ||
-                virtualKey == 0xBC || virtualKey == 0xBE);
-            if (!FocusTargetWindow()) return;
-            bool sent = ReportInputResult(Native.Key(virtualKey, shifted));
-            if (sent && virtualKey == 0x0D && preferences.CollapseAfterEnter)
+            bool shifted = shiftNext;
+            if (!FocusTargetWindow()) { ClearModifiers(); return; }
+            bool sent = ReportInputResult(Native.Key(virtualKey, shifted, ctrlNext));
+            if (sent && virtualKey == 0x0D && !shifted && !ctrlNext && preferences.CollapseAfterEnter)
                 BeginInvoke((Action)CollapseKeyboard);
-            if (shiftNext)
-            {
-                shiftNext = false;
-                UpdateShiftButtons();
-            }
+            ClearModifiers();
+        }
+
+        private void ClearModifiers()
+        {
+            shiftNext = false;
+            ctrlNext = false;
+            UpdateShiftButtons();
         }
 
         private void UpdateShiftButtons()
@@ -452,6 +489,7 @@ namespace Lucky.TouchInput
                 rightShiftButton.NormalColor = color;
                 rightShiftButton.BackColor = color;
             }
+            if (ctrlButton != null) SetButtonActive(ctrlButton, ctrlNext);
         }
 
         private void SendKey(ushort virtualKey)
@@ -466,6 +504,7 @@ namespace Lucky.TouchInput
 
         private void SendChord(ushort modifier, ushort virtualKey)
         {
+            ClearModifiers();
             if (FocusTargetWindow()) ReportInputResult(Native.Chord(modifier, virtualKey));
         }
 
@@ -497,11 +536,12 @@ namespace Lucky.TouchInput
 
         private void RefreshState()
         {
-            if (preferences.SuppressNativeKeyboard)
-                Native.HideSystemTouchKeyboard(Handle);
+            if (nativeKeyboardGuard != null) nativeKeyboardGuard.OwnerWindow = Handle;
             IntPtr resolved = ResolveTargetWindow();
             if (resolved == IntPtr.Zero || Native.IsIconic(resolved))
             {
+                ApplyNativeGuard(false);
+                ClearModifiers();
                 if (Visible) Hide();
                 RestoreTargetWindow();
                 targetWindow = IntPtr.Zero;
@@ -510,20 +550,65 @@ namespace Lucky.TouchInput
 
             if (targetWindow != resolved)
             {
+                ClearModifiers();
                 RestoreTargetWindow();
                 targetWindow = resolved;
             }
             PositionKeyboard();
+            Rectangle work = Screen.FromHandle(targetWindow).WorkingArea;
+            SystemKeyboardState native = Native.GetSystemKeyboardState(work);
+            if (!native.AnyVisible) waitingForNativeDismissal = false;
+            KeyboardOwnership ownership = KeyboardInteropPolicy.Decide(preferences.SuppressNativeKeyboard,
+                !collapsed, true, native.TouchVisible, native.OskVisible, waitingForNativeDismissal);
+            if (ownership == KeyboardOwnership.YieldToWindows || collapsed && native.AnyVisible)
+            {
+                YieldToNativeKeyboard();
+                return;
+            }
+            bool suppress = ownership == KeyboardOwnership.SuppressTouch;
+            bool applied = ApplyNativeGuard(suppress);
+            if (suppress && native.TouchVisible)
+            {
+                if (applied) Native.HideSystemTouchKeyboard(Handle);
+                if (!applied || Native.GetSystemKeyboardState(work).AnyVisible)
+                {
+                    // Do not fight an inaccessible/native pane every 125 ms. Wait until it
+                    // closes, or until the user explicitly reopens us from the tray/EXE.
+                    YieldToNativeKeyboard();
+                    return;
+                }
+            }
             if (!Visible) Show();
             if (!collapsed && preferences.Mode != KeyboardMode.Floating)
                 ForceTargetWindow();
             UpdateToolbar();
         }
 
+        private bool ApplyNativeGuard(bool suppress)
+        {
+            if (nativeKeyboardGuard == null) return !suppress;
+            bool success = nativeKeyboardGuard.Apply(suppress);
+            if (!success && !nativePolicyFailed) SetStatus("系统键盘策略未生效；已停止抢占，请查看本地日志");
+            nativePolicyFailed = !success;
+            return success;
+        }
+
+        private void YieldToNativeKeyboard()
+        {
+            waitingForNativeDismissal = true;
+            ApplyNativeGuard(false);
+            ClearModifiers();
+            if (Visible) Hide();
+            RestoreTargetWindow();
+            if (trayIcon != null) trayIcon.Text = "Lucky Touch Input · 已让位给 Windows 键盘";
+        }
+
         private IntPtr ResolveTargetWindow()
         {
             IntPtr foreground = Native.GetForegroundWindow();
             string process = Native.ProcessName(foreground);
+            if (foreground == IntPtr.Zero || KeyboardInteropPolicy.IsSecureSurfaceProcess(process))
+                return IntPtr.Zero;
 
             if (preferences.Mode == KeyboardMode.PinnedApplication)
             {
@@ -576,14 +661,14 @@ namespace Lucky.TouchInput
                 return;
             }
             Rectangle desired = LayoutPolicy.KeyboardBounds(work, preferences.Mode,
-                preferences.HeightPercent, preferences.LeftGap, preferences.LargeKeys);
+                preferences.HeightPercent, preferences.LeftGap, preferences.CompactToolbar);
             ApplyKeyboardBounds(desired);
         }
 
         internal void ApplyKeyboardBounds(Rectangle desired)
         {
             int height = desired.Height;
-            int toolbarHeight = preferences.LargeKeys
+            int toolbarHeight = preferences.CompactToolbar
                 ? Math.Clamp(height / 10, 56, 104)
                 : Math.Min(104, Math.Max(70, height / 9));
             if (root != null && root.RowStyles.Count > 0 &&
@@ -596,18 +681,25 @@ namespace Lucky.TouchInput
         private void AdaptToolbar(int width)
         {
             // The original fixed 922 px of buttons left no room for status on smaller hosts.
-            int unit = preferences.LargeKeys
+            int unit = preferences.CompactToolbar
                 ? Math.Clamp((width - 32) / 9, 40, 220)
                 : Math.Clamp((width - 160) / 12, 40, 82);
-            int[] widths = preferences.LargeKeys
+            int[] widths = preferences.CompactToolbar
                 ? new[] { 0, unit * 2, unit, 0, 0, unit, unit, unit }
                 : new[] { 0, unit * 2, unit * 2, unit, unit, unit, unit, unit };
-            variablesButton.Visible = !preferences.LargeKeys;
-            promptsButton.Visible = !preferences.LargeKeys;
+            variablesButton.Visible = !preferences.CompactToolbar;
+            promptsButton.Visible = !preferences.CompactToolbar;
             for (int index = 1; index < widths.Length; index++)
                 if (Math.Abs(toolbar.ColumnStyles[index].Width - widths[index]) > 0.5f)
                     toolbar.ColumnStyles[index].Width = widths[index];
             title.AutoEllipsis = true;
+            float titlePixels = Math.Clamp(root.RowStyles[0].Height * 0.30f, 12f, 32f);
+            if (Math.Abs(title.Font.Size - titlePixels) > 0.5f)
+            {
+                Font oldFont = title.Font;
+                title.Font = new Font("Microsoft YaHei UI", titlePixels, FontStyle.Regular, GraphicsUnit.Pixel);
+                oldFont.Dispose();
+            }
         }
 
         private void ForceTargetWindow()
@@ -679,6 +771,7 @@ namespace Lucky.TouchInput
             else if (panel == PanelKind.Variables) auxiliaryRow = BuildVariablesRow();
             else if (panel == PanelKind.Prompts) auxiliaryRow = BuildPromptsRow();
             else if (panel == PanelKind.Tools) auxiliaryRow = BuildToolsRow();
+            else if (panel == PanelKind.Edit) auxiliaryRow = BuildEditRow();
             else auxiliaryRow = BuildNumberRow();
             root.Controls.Add(auxiliaryRow, 0, 1);
         }
@@ -728,7 +821,7 @@ namespace Lucky.TouchInput
 
         private string NativePolicyLabel()
         {
-            return preferences.SuppressNativeKeyboard ? "系统键盘：抑制" : "系统键盘：共存";
+            return preferences.SuppressNativeKeyboard ? "系统键盘：互斥" : "系统键盘：让位";
         }
 
         private void ToggleEnterPolicy()
@@ -740,47 +833,46 @@ namespace Lucky.TouchInput
             ReplaceAuxiliaryRow();
         }
 
-        private void ToggleLargeKeys()
+        private string LayoutLabel()
         {
-            preferences.LargeKeys = !preferences.LargeKeys;
-            preferences.HeightPercent = preferences.LargeKeys ? 48 : 42;
-            preferences.Save();
-            ApplyTouchSizing(root);
-            ReplaceAuxiliaryRow();
-            RefreshState();
-            SetStatus(preferences.LargeKeys
-                ? "手机大键已启用；可用高度 ± 微调，工具内有滚轮和候选翻页"
-                : "已恢复标准布局");
+            return preferences.Layout == KeyboardLayout.Everyday ? "常用" : preferences.LargeKeys ? "手机大键" : "标准";
         }
 
-        private void ApplyTouchSizing(Control parent)
+        private void CycleLayout()
         {
-            foreach (Control child in parent.Controls)
-            {
-                var button = child as RoundedButton;
-                if (button != null)
-                {
-                    button.LargeLabels = preferences.LargeKeys;
-                    button.Margin = new Padding(preferences.LargeKeys ? 4 : 6);
-                }
-                if (child.HasChildren) ApplyTouchSizing(child);
-            }
+            SelectLayoutPreset((KeyboardLayout)(((int)preferences.Layout + 1) % 3));
+            SetStatus("已切换为" + LayoutLabel() + "布局；工具 → 编辑提供常用快捷键");
+        }
+
+        internal void SelectLayoutPreset(KeyboardLayout layout)
+        {
+            ClearModifiers();
+            preferences.SelectLayout(layout);
+            if (nativeKeyboardGuard != null) preferences.Save();
+            SuspendLayout();
+            Font oldTitleFont = title.Font;
+            root.Dispose();
+            oldTitleFont.Dispose();
+            triggerPanel.Dispose();
+            BuildLayout();
+            ReplaceAuxiliaryRow();
+            root.Visible = !collapsed;
+            triggerPanel.Visible = collapsed;
+            if (collapsed) triggerPanel.BringToFront();
+            ResumeLayout(true);
+            if (nativeKeyboardGuard != null) RefreshState();
+            else ApplyKeyboardBounds(Bounds);
         }
 
         private void ToggleNativePolicy()
         {
             bool requested = !preferences.SuppressNativeKeyboard;
-            if (!nativeKeyboardGuard.Apply(requested))
-            {
-                SetStatus("系统键盘设置未更改，请查看本地日志");
-                return;
-            }
             preferences.SuppressNativeKeyboard = requested;
             preferences.Save();
-            if (preferences.SuppressNativeKeyboard)
-                Native.HideSystemTouchKeyboard(targetWindow);
+            waitingForNativeDismissal = false;
+            RefreshState();
             SetStatus(preferences.SuppressNativeKeyboard
-                ? "已抑制 Windows 键盘自动弹出（实验）" : "已与 Windows 键盘共存");
+                ? "互斥：仅展开时抑制触摸键盘；OSK 出现时仍让位" : "让位：Windows 键盘出现时暂时隐藏本键盘");
             ReplaceAuxiliaryRow();
         }
 
@@ -813,6 +905,8 @@ namespace Lucky.TouchInput
         private void CollapseKeyboard()
         {
             if (collapsed) return;
+            ApplyNativeGuard(false);
+            ClearModifiers();
             collapseConfirmUntilUtc = DateTime.MinValue;
             RestoreTargetWindow();
             collapsed = true;
@@ -829,8 +923,8 @@ namespace Lucky.TouchInput
             triggerPanel.Visible = false;
             root.Visible = true;
             root.BringToFront();
-            PositionKeyboard();
-            if (preferences.Mode != KeyboardMode.Floating) ForceTargetWindow();
+            if (nativeKeyboardGuard != null) RefreshState();
+            else PositionKeyboard();
         }
 
         private void ToggleDoublePinyin()
@@ -964,9 +1058,11 @@ namespace Lucky.TouchInput
         private void UpdateToolbar()
         {
             if (title == null) return;
-            string defaultTitle = "Lucky Touch Input  ·  " + ModeLabel() + "  ·  " +
+            string defaultTitle = preferences.CompactToolbar ? "Lucky Touch Input · " + LayoutLabel() :
+                "Lucky Touch Input  ·  " + ModeLabel() + "  ·  " +
                 MicrosoftPinyinSettings.Label + "  ·  " +
-                (preferences.SuppressNativeKeyboard ? "独占" : "共存");
+                LayoutLabel() + "  ·  " + (nativeKeyboardGuard != null && nativeKeyboardGuard.IsSuppressing
+                    ? "触键互斥" : "自动让位");
             title.Text = DateTime.Now < statusUntil && !String.IsNullOrEmpty(statusMessage)
                 ? statusMessage : defaultTitle;
             modeButton.Text = ModeLabel();
@@ -974,6 +1070,8 @@ namespace Lucky.TouchInput
             variablesButton.Text = panel == PanelKind.Variables ? "数字" : "变量";
             promptsButton.Text = panel == PanelKind.Prompts ? "数字" : "提示";
             settingsButton.Text = panel == PanelKind.Settings ? "数字" : "设置";
+            if (nativePolicyMenu != null) nativePolicyMenu.Text = NativePolicyLabel();
+            if (trayIcon != null && !waitingForNativeDismissal) trayIcon.Text = "Lucky Touch Input";
             SetButtonActive(variablesButton, panel == PanelKind.Variables);
             SetButtonActive(promptsButton, panel == PanelKind.Prompts);
             SetButtonActive(settingsButton, panel == PanelKind.Settings);

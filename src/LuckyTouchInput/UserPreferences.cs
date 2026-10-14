@@ -8,7 +8,11 @@ namespace Lucky.TouchInput
     {
         internal static readonly string ConfigDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Lucky", "TouchInput");
+#if COMPACT_TEST
+                "Lucky", "TouchInputCompactTest");
+#else
+                "Lucky", "TouchInput");
+#endif
         internal static readonly string ConfigPath = Path.Combine(ConfigDirectory, "settings.ini");
         internal static readonly string NativeKeyboardLeasePath = Path.Combine(
             ConfigDirectory, "native-keyboard-lease.ini");

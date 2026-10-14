@@ -1,5 +1,22 @@
 # Lucky Touch Input
 
+## Compact floating keyboard (experimental fork feature)
+
+A separate right-side keyboard adds header dragging, corner resizing, +/- sizing,
+left/right placement, collapse/expand and saved bounds. It keeps the system IME and
+leaves the target application's size unchanged. The original application remains available.
+
+Build `src/LuckyTouchInput.CompactTest` or run `pwsh -File scripts/Publish.ps1 -Variant Compact`.
+The separate EXE and settings profile preserve the original installation.
+
+- [Requirements and acceptance](docs/COMPACT-REQUIREMENTS.md)
+- [Design](docs/COMPACT-DESIGN.md)
+- [Development and publishing](docs/COMPACT-DEVELOPMENT.md)
+- [Validation and limits](docs/COMPACT-VALIDATION.md)
+
+Initial phone feedback is positive; Chinese candidates and long-term stability still need testing.
+
+
 Adaptive on-screen keyboard and input panel for Windows tablets and remote sessions.
 
 > Alpha software. Lucky Touch Input does not create a remote connection and is not an input method.

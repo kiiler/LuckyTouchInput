@@ -9,3 +9,8 @@ artifacts/
 *.log
 settings.ini
 native-keyboard-lease.ini
+
+compact.json
+ui-session.json
+probe-text.txt
+probe-hwnd.txt

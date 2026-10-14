@@ -1,5 +1,20 @@
 # Lucky Touch Input
 
+## 紧凑悬浮键盘（fork 实验功能）
+
+新增独立的右侧紧凑键盘，支持顶部拖动、右下角缩放、＋／−调节、左右换边、收起展开和位置记忆。
+沿用 Windows 当前输入法，不调整目标应用窗口。原版入口和配置保持独立。
+
+构建 `src/LuckyTouchInput.CompactTest`，或运行 `pwsh -File scripts/Publish.ps1 -Variant Compact`。
+
+- [需求与验收](docs/COMPACT-REQUIREMENTS.md)
+- [技术方案](docs/COMPACT-DESIGN.md)
+- [开发与发布](docs/COMPACT-DEVELOPMENT.md)
+- [验证结果与限制](docs/COMPACT-VALIDATION.md)
+
+已获得手机远控初步验证反馈；中文候选和长时间稳定性仍需进一步验证。
+
+
 面向 Windows 平板与远控场景的自适应触控输入面板。
 
 > 当前为 Alpha。Lucky Touch Input 不负责建立远程连接，也不是输入法；它运行在 Windows

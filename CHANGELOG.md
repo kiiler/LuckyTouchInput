@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-compact.1 (fork experiment) — 2026-10-14
+
+- Add an isolated compact floating keyboard with drag, resize, edge switching and saved placement.
+- Preserve the standard application; add separate tests, publishing and CI checks for compact builds.
+- Document requirements, design, development and preliminary phone validation.
+
+
 ## [0.1.0-alpha.1] - 2026-09-08
 
 - Add an opt-in phone large-key preset: 48% height, larger utility labels, smaller margins,

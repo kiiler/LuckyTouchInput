@@ -22,6 +22,11 @@ jobs:
         run: dotnet build LuckyTouchInput.sln -c Release --no-restore
       - name: Settings, layouts, and native ownership checks
         run: dotnet run --project tests/LuckyTouchInput.Tests -c Release --no-build
+      - name: Compact geometry, persistence, and control-layout checks
+        run: dotnet run --project tests/LuckyTouchInput.CompactTests -c Release --no-build
+      - name: Publish compact Windows build
+        shell: pwsh
+        run: ./scripts/Publish.ps1 -Variant Compact
       - name: Publish portable Windows build
         shell: pwsh
         run: ./scripts/Publish.ps1
@@ -29,5 +34,5 @@ jobs:
         with:
           name: LuckyTouchInput-win-x64
           path: |
-            artifacts/LuckyTouchInput-*-win-x64.zip
-            artifacts/LuckyTouchInput-*-win-x64.zip.sha256
+            artifacts/LuckyTouchInput*-win-x64.zip
+            artifacts/LuckyTouchInput*-win-x64.zip.sha256

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>LuckyTouchInput.CompactTest</AssemblyName>
+    <StartupObject>Lucky.TouchInput.CompactHost</StartupObject>
+    <DefineConstants>$(DefineConstants);COMPACT_TEST</DefineConstants>
+    <ApplicationIcon>../../assets/icon.ico</ApplicationIcon>
+    <Version>0.1.0-compact.1</Version>
+    <Product>Lucky Touch Input Compact Test</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../LuckyTouchInput/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="LuckyTouchInput.CompactTests" />
+  </ItemGroup>
+</Project>

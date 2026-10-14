@@ -45,3 +45,8 @@ replaces values that still equal the suppression value (DWORD zero). External no
 type changes, or deletions win; a same-value external write cannot be distinguished. Malformed
 leases block new acquisition and remain available for diagnosis. The local-only test suite uses
 random disposable registry keys, not the user's actual TabletTip settings.
+
+## Experimental compact companion
+
+The fork also builds a separate compact executable. See [compact design](COMPACT-DESIGN.md)
+for its geometry, input ownership and isolated profile. The sections above describe the original application.

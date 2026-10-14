@@ -145,9 +145,9 @@ namespace Lucky.TouchInput
         [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
-        internal static void ShowExistingKeyboard()
+        internal static void ShowExistingKeyboard(string title = "Lucky Touch Input")
         {
-            IntPtr hwnd = FindWindow(null, "Lucky Touch Input");
+            IntPtr hwnd = FindWindow(null, title);
             if (hwnd != IntPtr.Zero)
                 PostMessage(hwnd, WM_SHOW_KEYBOARD, IntPtr.Zero, IntPtr.Zero);
         }

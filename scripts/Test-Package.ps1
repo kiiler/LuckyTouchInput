@@ -1,14 +1,18 @@
-param([Parameter(Mandatory)][string]$Archive)
+param(
+    [Parameter(Mandatory)][string]$Archive,
+    [ValidateSet('LuckyTouchInput.exe', 'LuckyTouchInput.CompactTest.exe')]
+    [string]$Executable = 'LuckyTouchInput.exe'
+)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Archive).Path)
 try {
     $entries = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-    foreach ($required in @('LuckyTouchInput.exe', 'README.md', 'README.zh-CN.md', 'LICENSE',
+    foreach ($required in @($Executable, 'README.md', 'README.zh-CN.md', 'LICENSE',
         'docs/PRIVACY.md', 'docs/ARCHITECTURE.md', 'assets/icon.ico')) {
         if ($entries -notcontains $required) { throw "Missing package entry: $required" }
     }
-    if ($entries | Where-Object { $_ -match '(^|/)(\.git|settings.ini|native-keyboard-lease.ini)(/|$)|\.pdb$|(^|/)\.\.' }) {
+    if ($entries | Where-Object { $_ -match '(^|/)(\.git|settings.ini|compact.json|ui-session.json|probe-text.txt|probe-hwnd.txt|native-keyboard-lease.ini)(/|$)|\.pdb$|(^|/)\.\.' }) {
         throw 'Package contains development state or an unsafe path.'
     }
     foreach ($entry in $zip.Entries | Where-Object { $_.FullName -match '\.md$' }) {

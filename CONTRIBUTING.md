@@ -35,3 +35,8 @@ Do not add telemetry, cloud services, arbitrary command execution, bundled input
 or silent registry changes. A new dependency needs a concrete user-facing reason and license review.
 
 Typed text, clipboard contents, private paths, and machine-specific settings must never be committed.
+
+## Compact companion
+
+See [compact development](docs/COMPACT-DEVELOPMENT.md) for its separate project, fast checks,
+opt-in input-injection harness, packaging and preliminary phone acceptance scope.
